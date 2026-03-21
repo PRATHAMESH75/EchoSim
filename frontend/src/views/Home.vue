@@ -1,890 +1,468 @@
 <template>
-  <div class="home-container">
-    <!-- 顶部导航栏 -->
-    <nav class="navbar">
-      <div class="nav-brand">MIROFISH</div>
-      <div class="nav-links">
-        <a href="https://github.com/666ghj/MiroFish" target="_blank" class="github-link">
-          访问我们的Github主页 <span class="arrow">↗</span>
-        </a>
+  <div class="launch-home">
+    <div class="ambient ambient-left" />
+    <div class="ambient ambient-right" />
+
+    <header class="topbar">
+      <div class="brand-block">
+        <span class="brand-kicker">Launch-ready workflow</span>
+        <span class="brand-name">Sentiment Simulator</span>
       </div>
-    </nav>
+      <router-link to="/sentiment" class="topbar-link">Open Workspace</router-link>
+    </header>
 
-    <div class="main-content">
-      <!-- 上半部分：Hero 区域 -->
-      <section class="hero-section">
-        <div class="hero-left">
-          <div class="tag-row">
-            <span class="orange-tag">简洁通用的群体智能引擎</span>
-            <span class="version-text">/ v0.1-预览版</span>
-          </div>
-          
-          <h1 class="main-title">
-            上传任意报告<br>
-            <span class="gradient-text">即刻推演未来</span>
-          </h1>
-          
-          <div class="hero-desc">
-            <p>
-              即使只有一段文字，<span class="highlight-bold">MiroFish</span> 也能基于其中的现实种子，全自动生成与之对应的至多<span class="highlight-orange">百万级Agent</span>构成的平行世界。通过上帝视角注入变量，在复杂的群体交互中寻找动态环境下的<span class="highlight-code">“局部最优解”</span>
-            </p>
-            <p class="slogan-text">
-              让未来在 Agent 群中预演，让决策在百战后胜出<span class="blinking-cursor">_</span>
-            </p>
-          </div>
-           
-          <div class="decoration-square"></div>
-        </div>
-        
-        <div class="hero-right">
-          <!-- Logo 区域 -->
-          <div class="logo-container">
-            <img src="../assets/logo/MiroFish_logo_left.jpeg" alt="MiroFish Logo" class="hero-logo" />
-          </div>
-          
-          <button class="scroll-down-btn" @click="scrollToBottom">
-            ↓
-          </button>
-        </div>
-      </section>
-
-      <!-- 下半部分：双栏布局 -->
-      <section class="dashboard-section">
-        <!-- 左栏：状态与步骤 -->
-        <div class="left-panel">
-          <div class="panel-header">
-            <span class="status-dot">■</span> 系统状态
-          </div>
-          
-          <h2 class="section-title">准备就绪</h2>
-          <p class="section-desc">
-            预测引擎待命中，可上传多份非结构化数据以初始化模拟序列
+    <main class="page-shell">
+      <section class="hero-card">
+        <div class="hero-copy">
+          <span class="eyebrow">Product sentiment forecasting</span>
+          <h1>Pressure-test a launch before the market does.</h1>
+          <p class="hero-text">
+            Turn a product brief into a structured knowledge graph, generate a population of consumer archetypes,
+            run three parallel launch scenarios, and compare how sentiment moves round by round.
           </p>
-          
-          <!-- 数据指标卡片 -->
-          <div class="metrics-row">
-            <div class="metric-card">
-              <div class="metric-value">低成本</div>
-              <div class="metric-label">常规模拟平均5$/次</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">高可用</div>
-              <div class="metric-label">最多百万级Agent模拟</div>
-            </div>
+          <div class="hero-actions">
+            <router-link to="/sentiment" class="btn-primary">Start a Campaign</router-link>
+            <a href="#workflow" class="btn-secondary">See the Workflow</a>
           </div>
-
-          <!-- 项目模拟步骤介绍 (新增区域) -->
-          <div class="steps-container">
-            <div class="steps-header">
-               <span class="diamond-icon">◇</span> 工作流序列
+          <div class="hero-metrics">
+            <div class="metric">
+              <span class="metric-value">3</span>
+              <span class="metric-label">parallel scenarios</span>
             </div>
-            <div class="workflow-list">
-              <div class="workflow-item">
-                <span class="step-num">01</span>
-                <div class="step-info">
-                  <div class="step-title">图谱构建</div>
-                  <div class="step-desc">现实种子提取 & 个体与群体记忆注入 & GraphRAG构建</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">02</span>
-                <div class="step-info">
-                  <div class="step-title">环境搭建</div>
-                  <div class="step-desc">实体关系抽取 & 人设生成 & 环境配置Agent注入仿真参数</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">03</span>
-                <div class="step-info">
-                  <div class="step-title">开始模拟</div>
-                  <div class="step-desc">双平台并行模拟 & 自动解析预测需求 & 动态更新时序记忆</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">04</span>
-                <div class="step-info">
-                  <div class="step-title">报告生成</div>
-                  <div class="step-desc">ReportAgent拥有丰富的工具集与模拟后环境进行深度交互</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">05</span>
-                <div class="step-info">
-                  <div class="step-title">深度互动</div>
-                  <div class="step-desc">与模拟世界中的任意一位进行对话 & 与ReportAgent进行对话</div>
-                </div>
-              </div>
+            <div class="metric">
+              <span class="metric-value">9</span>
+              <span class="metric-label">consumer archetypes</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value">4</span>
+              <span class="metric-label">operator steps</span>
             </div>
           </div>
         </div>
 
-        <!-- 右栏：交互控制台 -->
-        <div class="right-panel">
-          <div class="console-box">
-            <!-- 上传区域 -->
-            <div class="console-section">
-              <div class="console-header">
-                <span class="console-label">01 / 现实种子</span>
-                <span class="console-meta">支持格式: PDF, MD, TXT</span>
-              </div>
-              
-              <div 
-                class="upload-zone"
-                :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
-                @dragover.prevent="handleDragOver"
-                @dragleave.prevent="handleDragLeave"
-                @drop.prevent="handleDrop"
-                @click="triggerFileInput"
-              >
-                <input
-                  ref="fileInput"
-                  type="file"
-                  multiple
-                  accept=".pdf,.md,.txt"
-                  @change="handleFileSelect"
-                  style="display: none"
-                  :disabled="loading"
-                />
-                
-                <div v-if="files.length === 0" class="upload-placeholder">
-                  <div class="upload-icon">↑</div>
-                  <div class="upload-title">拖拽文件上传</div>
-                  <div class="upload-hint">或点击浏览文件系统</div>
-                </div>
-                
-                <div v-else class="file-list">
-                  <div v-for="(file, index) in files" :key="index" class="file-item">
-                    <span class="file-icon">📄</span>
-                    <span class="file-name">{{ file.name }}</span>
-                    <button @click.stop="removeFile(index)" class="remove-btn">×</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 分割线 -->
-            <div class="console-divider">
-              <span>输入参数</span>
-            </div>
-
-            <!-- 输入区域 -->
-            <div class="console-section">
-              <div class="console-header">
-                <span class="console-label">>_ 02 / 模拟提示词</span>
-              </div>
-              <div class="input-wrapper">
-                <textarea
-                  v-model="formData.simulationRequirement"
-                  class="code-input"
-                  placeholder="// 用自然语言输入模拟或预测需求（例.武大若发布撤销肖某处分的公告，会引发什么舆情走向）"
-                  rows="6"
-                  :disabled="loading"
-                ></textarea>
-                <div class="model-badge">引擎: MiroFish-V1.0</div>
-              </div>
-            </div>
-
-            <!-- 启动按钮 -->
-            <div class="console-section btn-section">
-              <button 
-                class="start-engine-btn"
-                @click="startSimulation"
-                :disabled="!canSubmit || loading"
-              >
-                <span v-if="!loading">启动引擎</span>
-                <span v-else>初始化中...</span>
-                <span class="btn-arrow">→</span>
-              </button>
+        <div class="hero-panel">
+          <div class="hero-panel-header">
+            <span>Launch surface</span>
+            <span>v1</span>
+          </div>
+          <div class="signal-grid">
+            <div v-for="signal in signals" :key="signal.label" class="signal-card">
+              <span class="signal-label">{{ signal.label }}</span>
+              <strong>{{ signal.value }}</strong>
+              <p>{{ signal.note }}</p>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- 历史项目数据库 -->
-      <HistoryDatabase />
-    </div>
+      <section id="workflow" class="workflow-grid">
+        <article v-for="step in workflow" :key="step.number" class="workflow-card">
+          <span class="workflow-number">{{ step.number }}</span>
+          <h2>{{ step.title }}</h2>
+          <p>{{ step.description }}</p>
+        </article>
+      </section>
+
+      <section class="focus-strip">
+        <div>
+          <span class="strip-label">Launch stance</span>
+          <h3>One product path, not two unfinished ones.</h3>
+        </div>
+        <p>
+          The public app now routes directly into the sentiment workflow. Legacy graph, simulation, and report screens
+          stay backend-capable but are no longer part of the shipped frontend surface.
+        </p>
+      </section>
+    </main>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
-import HistoryDatabase from '../components/HistoryDatabase.vue'
+const workflow = [
+  {
+    number: '01',
+    title: 'Brief the product',
+    description: 'Capture the launch context, pricing, target segment, channels, competitors, and risk assumptions in one structured form.',
+  },
+  {
+    number: '02',
+    title: 'Review the population',
+    description: 'Inspect the generated archetype mix before preparation begins so the market model is explicit instead of implied.',
+  },
+  {
+    number: '03',
+    title: 'Run scenarios in parallel',
+    description: 'Execute baseline, competitive, and crisis scenarios together so timing and sentiment shifts stay comparable.',
+  },
+  {
+    number: '04',
+    title: 'Read the dashboard',
+    description: 'Compare sentiment, objections, archetype heatmaps, faction movement, and round-by-round divergence with cached refreshes.',
+  },
+]
 
-const router = useRouter()
-
-// 表单数据
-const formData = ref({
-  simulationRequirement: ''
-})
-
-// 文件列表
-const files = ref([])
-
-// 状态
-const loading = ref(false)
-const error = ref('')
-const isDragOver = ref(false)
-
-// 文件输入引用
-const fileInput = ref(null)
-
-// 计算属性:是否可以提交
-const canSubmit = computed(() => {
-  return formData.value.simulationRequirement.trim() !== '' && files.value.length > 0
-})
-
-// 触发文件选择
-const triggerFileInput = () => {
-  if (!loading.value) {
-    fileInput.value?.click()
-  }
-}
-
-// 处理文件选择
-const handleFileSelect = (event) => {
-  const selectedFiles = Array.from(event.target.files)
-  addFiles(selectedFiles)
-}
-
-// 处理拖拽相关
-const handleDragOver = (e) => {
-  if (!loading.value) {
-    isDragOver.value = true
-  }
-}
-
-const handleDragLeave = (e) => {
-  isDragOver.value = false
-}
-
-const handleDrop = (e) => {
-  isDragOver.value = false
-  if (loading.value) return
-  
-  const droppedFiles = Array.from(e.dataTransfer.files)
-  addFiles(droppedFiles)
-}
-
-// 添加文件
-const addFiles = (newFiles) => {
-  const validFiles = newFiles.filter(file => {
-    const ext = file.name.split('.').pop().toLowerCase()
-    return ['pdf', 'md', 'txt'].includes(ext)
-  })
-  files.value.push(...validFiles)
-}
-
-// 移除文件
-const removeFile = (index) => {
-  files.value.splice(index, 1)
-}
-
-// 滚动到底部
-const scrollToBottom = () => {
-  window.scrollTo({
-    top: document.body.scrollHeight,
-    behavior: 'smooth'
-  })
-}
-
-// 开始模拟 - 立即跳转，API调用在Process页面进行
-const startSimulation = () => {
-  if (!canSubmit.value || loading.value) return
-  
-  // 存储待上传的数据
-  import('../store/pendingUpload.js').then(({ setPendingUpload }) => {
-    setPendingUpload(files.value, formData.value.simulationRequirement)
-    
-    // 立即跳转到Process页面（使用特殊标识表示新建项目）
-    router.push({
-      name: 'Process',
-      params: { projectId: 'new' }
-    })
-  })
-}
+const signals = [
+  {
+    label: 'Preparation',
+    value: 'Async',
+    note: 'Long-running setup is handled as a tracked background task instead of a blocking request.',
+  },
+  {
+    label: 'Analysis',
+    value: 'Cached',
+    note: 'Sentiment results are reused until simulation action logs change, which keeps dashboard refreshes fast.',
+  },
+  {
+    label: 'Deployment',
+    value: 'Single origin',
+    note: 'The production image builds the frontend once and serves the launch surface from the backend process.',
+  },
+]
 </script>
 
 <style scoped>
-/* 全局变量与重置 */
-:root {
-  --black: #000000;
-  --white: #FFFFFF;
-  --orange: #FF4500;
-  --gray-light: #F5F5F5;
-  --gray-text: #666666;
-  --border: #E5E5E5;
-  /* 
-    使用 Space Grotesk 作为主要标题字体，JetBrains Mono 作为代码/标签字体
-    确保已在 index.html 引入这些 Google Fonts 
-  */
-  --font-mono: 'JetBrains Mono', monospace;
-  --font-sans: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
-  --font-cn: 'Noto Sans SC', system-ui, sans-serif;
-}
-
-.home-container {
+.launch-home {
+  --bg: #f7f1e7;
+  --panel: rgba(255, 251, 246, 0.82);
+  --ink: #1e1813;
+  --muted: #65584e;
+  --line: rgba(30, 24, 19, 0.12);
+  --accent: #d05a2b;
+  --accent-soft: rgba(208, 90, 43, 0.12);
   min-height: 100vh;
-  background: var(--white);
-  font-family: var(--font-sans);
-  color: var(--black);
+  position: relative;
+  overflow: hidden;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(208, 90, 43, 0.18), transparent 26%),
+    radial-gradient(circle at 85% 12%, rgba(39, 102, 88, 0.16), transparent 24%),
+    linear-gradient(180deg, #fbf8f2 0%, var(--bg) 100%);
 }
 
-/* 顶部导航 */
-.navbar {
-  height: 60px;
-  background: var(--black);
-  color: var(--white);
+.ambient {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(60px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.ambient-left {
+  inset: 120px auto auto -80px;
+  width: 240px;
+  height: 240px;
+  background: rgba(208, 90, 43, 0.2);
+}
+
+.ambient-right {
+  inset: auto -100px 120px auto;
+  width: 280px;
+  height: 280px;
+  background: rgba(39, 102, 88, 0.18);
+}
+
+.topbar,
+.page-shell {
+  position: relative;
+  z-index: 1;
+}
+
+.topbar {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 28px 24px 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 40px;
 }
 
-.nav-brand {
-  font-family: var(--font-mono);
-  font-weight: 800;
-  letter-spacing: 1px;
-  font-size: 1.2rem;
+.brand-block {
+  display: grid;
+  gap: 4px;
 }
 
-.nav-links {
-  display: flex;
-  align-items: center;
+.brand-kicker {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted);
 }
 
-.github-link {
-  color: var(--white);
-  text-decoration: none;
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  font-weight: 500;
-  display: flex;
+.brand-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.topbar-link {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  transition: opacity 0.2s;
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.45);
+  transition: transform 0.2s ease, background 0.2s ease;
 }
 
-.github-link:hover {
-  opacity: 0.8;
+.topbar-link:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.7);
 }
 
-.arrow {
-  font-family: sans-serif;
-}
-
-/* 主要内容区 */
-.main-content {
-  max-width: 1400px;
+.page-shell {
+  max-width: 1220px;
   margin: 0 auto;
-  padding: 60px 40px;
+  padding: 28px 24px 72px;
+  display: grid;
+  gap: 28px;
 }
 
-/* Hero 区域 */
-.hero-section {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 80px;
-  position: relative;
+.hero-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 24px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: var(--panel);
+  box-shadow: 0 24px 80px rgba(37, 27, 20, 0.08);
+  backdrop-filter: blur(16px);
 }
 
-.hero-left {
-  flex: 1;
-  padding-right: 60px;
-}
-
-.tag-row {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  margin-bottom: 25px;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-}
-
-.orange-tag {
-  background: var(--orange);
-  color: var(--white);
-  padding: 4px 10px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  font-size: 0.75rem;
-}
-
-.version-text {
-  color: #999;
-  font-weight: 500;
-  letter-spacing: 0.5px;
-}
-
-.main-title {
-  font-size: 4.5rem;
-  line-height: 1.2;
-  font-weight: 500;
-  margin: 0 0 40px 0;
-  letter-spacing: -2px;
-  color: var(--black);
-}
-
-.gradient-text {
-  background: linear-gradient(90deg, #000000 0%, #444444 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  display: inline-block;
-}
-
-.hero-desc {
-  font-size: 1.05rem;
-  line-height: 1.8;
-  color: var(--gray-text);
-  max-width: 640px;
-  margin-bottom: 50px;
-  font-weight: 400;
-  text-align: justify;
-}
-
-.hero-desc p {
-  margin-bottom: 1.5rem;
-}
-
-.highlight-bold {
-  color: var(--black);
-  font-weight: 700;
-}
-
-.highlight-orange {
-  color: var(--orange);
-  font-weight: 700;
-  font-family: var(--font-mono);
-}
-
-.highlight-code {
-  background: rgba(0, 0, 0, 0.05);
-  padding: 2px 6px;
-  border-radius: 2px;
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  color: var(--black);
+.eyebrow,
+.strip-label {
+  display: inline-flex;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.78rem;
   font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.slogan-text {
-  font-size: 1.2rem;
-  font-weight: 520;
-  color: var(--black);
-  letter-spacing: 1px;
-  border-left: 3px solid var(--orange);
-  padding-left: 15px;
-  margin-top: 20px;
+.hero-copy h1 {
+  max-width: 12ch;
+  font-size: clamp(2.8rem, 7vw, 5.3rem);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+  margin-bottom: 18px;
 }
 
-.blinking-cursor {
-  color: var(--orange);
-  animation: blink 1s step-end infinite;
-  font-weight: 700;
+.hero-text {
+  max-width: 60ch;
+  color: var(--muted);
+  font-size: 1.02rem;
+  line-height: 1.7;
 }
 
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.decoration-square {
-  width: 16px;
-  height: 16px;
-  background: var(--orange);
-}
-
-.hero-right {
-  flex: 0.8;
+.hero-actions {
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
 }
 
-.logo-container {
-  width: 100%;
-  display: flex;
-  justify-content: flex-end;
-  padding-right: 40px;
-}
-
-.hero-logo {
-  max-width: 500px; /* 调整logo大小 */
-  width: 100%;
-}
-
-.scroll-down-btn {
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--border);
-  background: transparent;
-  display: flex;
+.btn-primary,
+.btn-secondary {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  color: var(--orange);
-  font-size: 1.2rem;
-  transition: all 0.2s;
+  min-height: 48px;
+  padding: 0 20px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
 }
 
-.scroll-down-btn:hover {
-  border-color: var(--orange);
+.btn-primary {
+  background: var(--ink);
+  color: #f8f4ed;
 }
 
-/* Dashboard 双栏布局 */
-.dashboard-section {
-  display: flex;
-  gap: 60px;
-  border-top: 1px solid var(--border);
-  padding-top: 60px;
-  align-items: flex-start;
+.btn-secondary {
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.55);
 }
 
-.dashboard-section .left-panel,
-.dashboard-section .right-panel {
-  display: flex;
-  flex-direction: column;
+.btn-primary:hover,
+.btn-secondary:hover {
+  transform: translateY(-1px);
 }
 
-/* 左侧面板 */
-.left-panel {
-  flex: 0.8;
+.hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 28px;
 }
 
-.panel-header {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: #999;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.status-dot {
-  color: var(--orange);
-  font-size: 0.8rem;
-}
-
-.section-title {
-  font-size: 2rem;
-  font-weight: 520;
-  margin: 0 0 15px 0;
-}
-
-.section-desc {
-  color: var(--gray-text);
-  margin-bottom: 25px;
-  line-height: 1.6;
-}
-
-.metrics-row {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 15px;
-}
-
-.metric-card {
-  border: 1px solid var(--border);
-  padding: 20px 30px;
-  min-width: 150px;
+.metric {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--line);
 }
 
 .metric-value {
-  font-family: var(--font-mono);
-  font-size: 1.8rem;
-  font-weight: 520;
-  margin-bottom: 5px;
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
 }
 
 .metric-label {
-  font-size: 0.85rem;
-  color: #999;
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.92rem;
 }
 
-/* 项目模拟步骤介绍 */
-.steps-container {
-  border: 1px solid var(--border);
-  padding: 30px;
-  position: relative;
-}
-
-.steps-header {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: #999;
-  margin-bottom: 25px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.diamond-icon {
-  font-size: 1.2rem;
-  line-height: 1;
-}
-
-.workflow-list {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.workflow-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 20px;
-}
-
-.step-num {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: var(--black);
-  opacity: 0.3;
-}
-
-.step-info {
-  flex: 1;
-}
-
-.step-title {
-  font-weight: 520;
-  font-size: 1rem;
-  margin-bottom: 4px;
-}
-
-.step-desc {
-  font-size: 0.85rem;
-  color: var(--gray-text);
-}
-
-/* 右侧交互控制台 */
-.right-panel {
-  flex: 1.2;
-}
-
-.console-box {
-  border: 1px solid #CCC; /* 外部实线 */
-  padding: 8px; /* 内边距形成双重边框感 */
-}
-
-.console-section {
+.hero-panel {
+  display: grid;
+  gap: 16px;
   padding: 20px;
+  border-radius: 22px;
+  background: rgba(26, 22, 19, 0.94);
+  color: #fbf6ee;
 }
 
-.console-section.btn-section {
-  padding-top: 0;
-}
-
-.console-header {
+.hero-panel-header {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 15px;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: #666;
-}
-
-.upload-zone {
-  border: 1px dashed #CCC;
-  height: 200px;
-  overflow-y: auto;
-  display: flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.3s;
-  background: #FAFAFA;
+  color: rgba(251, 246, 238, 0.72);
+  font-size: 0.86rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
 
-.upload-zone.has-files {
-  align-items: flex-start;
+.signal-grid {
+  display: grid;
+  gap: 14px;
 }
 
-.upload-zone:hover {
-  background: #F0F0F0;
-  border-color: #999;
+.signal-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.upload-placeholder {
-  text-align: center;
+.signal-label {
+  display: block;
+  color: rgba(251, 246, 238, 0.62);
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-.upload-icon {
-  width: 40px;
-  height: 40px;
-  border: 1px solid #DDD;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 15px;
-  color: #999;
+.signal-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.15rem;
 }
 
-.upload-title {
-  font-weight: 500;
-  font-size: 0.9rem;
-  margin-bottom: 5px;
-}
-
-.upload-hint {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: #999;
-}
-
-.file-list {
-  width: 100%;
-  padding: 15px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.file-item {
-  display: flex;
-  align-items: center;
-  background: var(--white);
-  padding: 8px 12px;
-  border: 1px solid #EEE;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-}
-
-.file-name {
-  flex: 1;
-  margin: 0 10px;
-}
-
-.remove-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.2rem;
-  color: #999;
-}
-
-.console-divider {
-  display: flex;
-  align-items: center;
-  margin: 10px 0;
-}
-
-.console-divider::before,
-.console-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #EEE;
-}
-
-.console-divider span {
-  padding: 0 15px;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: #BBB;
-  letter-spacing: 1px;
-}
-
-.input-wrapper {
-  position: relative;
-  border: 1px solid #DDD;
-  background: #FAFAFA;
-}
-
-.code-input {
-  width: 100%;
-  border: none;
-  background: transparent;
-  padding: 20px;
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
+.signal-card p {
+  margin-top: 8px;
+  color: rgba(251, 246, 238, 0.72);
   line-height: 1.6;
-  resize: vertical;
-  outline: none;
-  min-height: 150px;
 }
 
-.model-badge {
-  position: absolute;
-  bottom: 10px;
-  right: 15px;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: #AAA;
+.workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
 }
 
-.start-engine-btn {
-  width: 100%;
-  background: var(--black);
-  color: var(--white);
-  border: none;
-  padding: 20px;
-  font-family: var(--font-mono);
+.workflow-card,
+.focus-strip {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(10px);
+}
+
+.workflow-card {
+  padding: 22px;
+}
+
+.workflow-number {
+  display: inline-flex;
+  margin-bottom: 18px;
+  color: var(--accent);
+  font-size: 0.82rem;
   font-weight: 700;
-  font-size: 1.1rem;
-  display: flex;
-  justify-content: space-between;
+  letter-spacing: 0.14em;
+}
+
+.workflow-card h2 {
+  font-size: 1.18rem;
+  margin-bottom: 10px;
+}
+
+.workflow-card p,
+.focus-strip p {
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.focus-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 24px;
+  padding: 26px;
   align-items: center;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  letter-spacing: 1px;
-  position: relative;
-  overflow: hidden;
 }
 
-/* 可点击状态（非禁用） */
-.start-engine-btn:not(:disabled) {
-  background: var(--black);
-  border: 1px solid var(--black);
-  animation: pulse-border 2s infinite;
+.focus-strip h3 {
+  font-size: clamp(1.6rem, 4vw, 2.5rem);
+  line-height: 1.05;
 }
 
-.start-engine-btn:hover:not(:disabled) {
-  background: var(--orange);
-  border-color: var(--orange);
-  transform: translateY(-2px);
-}
-
-.start-engine-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.start-engine-btn:disabled {
-  background: #E5E5E5;
-  color: #999;
-  cursor: not-allowed;
-  transform: none;
-  border: 1px solid #E5E5E5;
-}
-
-/* 引导动画：微妙的边框脉冲 */
-@keyframes pulse-border {
-  0% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.2); }
-  70% { box-shadow: 0 0 0 6px rgba(0, 0, 0, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
-}
-
-/* 响应式适配 */
 @media (max-width: 1024px) {
-  .dashboard-section {
+  .hero-card,
+  .focus-strip,
+  .workflow-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hero-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    padding-top: 20px;
     flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
   }
-  
-  .hero-section {
-    flex-direction: column;
+
+  .page-shell {
+    padding-bottom: 48px;
   }
-  
-  .hero-left {
-    padding-right: 0;
-    margin-bottom: 40px;
+
+  .hero-card {
+    padding: 24px;
   }
-  
-  .hero-logo {
-    max-width: 200px;
-    margin-bottom: 20px;
+
+  .hero-metrics,
+  .workflow-grid,
+  .focus-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-copy h1 {
+    max-width: none;
+    font-size: clamp(2.4rem, 15vw, 4rem);
   }
 }
 </style>

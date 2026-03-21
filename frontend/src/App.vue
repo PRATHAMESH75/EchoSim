@@ -3,45 +3,71 @@
 </template>
 
 <script setup>
-// 使用 Vue Router 来管理页面
+// Root shell is managed by route views.
 </script>
 
 <style>
-/* 全局样式重置 */
+:root {
+  font-family: 'Space Grotesk', sans-serif;
+  color: #1f1712;
+  background: #fcfaf6;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-#app {
-  font-family: 'JetBrains Mono', 'Space Grotesk', 'Noto Sans SC', monospace;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  color: #000000;
-  background-color: #ffffff;
+html {
+  scroll-behavior: smooth;
 }
 
-/* 滚动条样式 */
+body,
+button,
+input,
+textarea,
+select {
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+code,
+pre,
+.mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+body {
+  min-width: 320px;
+  background: #fcfaf6;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+}
+
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: rgba(31, 23, 18, 0.06);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #000000;
+  background: rgba(31, 23, 18, 0.32);
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #333333;
-}
-
-/* 全局按钮样式 */
-button {
-  font-family: inherit;
+  background: rgba(31, 23, 18, 0.48);
 }
 </style>

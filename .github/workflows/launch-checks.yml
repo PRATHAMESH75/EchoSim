@@ -1,0 +1,71 @@
+name: Launch checks
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install frontend deps
+        run: |
+          npm ci
+          npm ci --prefix frontend
+
+      - name: Install backend deps
+        run: |
+          cd backend
+          uv sync --frozen --group dev
+
+      - name: Build frontend
+        run: npm run build --prefix frontend
+
+      - name: Run backend tests
+        run: backend/.venv/bin/python -m pytest -q backend/tests
+        env:
+          SECRET_KEY: test-secret-key
+          LLM_API_KEY: test-llm-key
+          ZEP_API_KEY: test-zep-key
+
+      - name: Check public text surface
+        run: |
+          ! rg -n "MiroFish|SWARM|[\\p{Han}]" \
+            frontend/index.html \
+            frontend/public/icon.svg \
+            frontend/src/App.vue \
+            frontend/src/router/index.js \
+            frontend/src/api \
+            frontend/src/views/Home.vue \
+            frontend/src/views/SentimentView.vue \
+            frontend/src/components/SeedTemplateForm.vue \
+            frontend/src/components/ArchetypeReview.vue \
+            frontend/src/components/CampaignRunView.vue \
+            frontend/src/components/SentimentDashboard.vue \
+            frontend/src/components/GraphPanel.vue \
+            README.md README-EN.md docs Dockerfile docker-compose.yml
+
+      - name: Check parallel campaign wording
+        run: |
+          ! rg -n "sequential|sequentially" README.md README-EN.md docs frontend/src/views/SentimentView.vue backend/app/api/sentiment.py

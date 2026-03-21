@@ -195,7 +195,7 @@ def generate_report():
         }), 500
 
 
-@report_bp.route('/generate/status', methods=['POST'])
+@report_bp.route('/generate/status', methods=['GET', 'POST'])
 def get_generate_status():
     """
     查询报告生成任务进度
@@ -218,10 +218,11 @@ def get_generate_status():
         }
     """
     try:
-        data = request.get_json() or {}
-        
-        task_id = data.get('task_id')
-        simulation_id = data.get('simulation_id')
+        data = request.get_json(silent=True) or {}
+        query_data = request.args or {}
+
+        task_id = data.get('task_id') or query_data.get('task_id')
+        simulation_id = data.get('simulation_id') or query_data.get('simulation_id')
         
         # 如果提供了simulation_id，先检查是否已有完成的报告
         if simulation_id:
@@ -242,7 +243,7 @@ def get_generate_status():
         if not task_id:
             return jsonify({
                 "success": False,
-                "error": "请提供 task_id 或 simulation_id"
+                "error": "task_id or simulation_id is required"
             }), 400
         
         task_manager = TaskManager()
@@ -251,7 +252,7 @@ def get_generate_status():
         if not task:
             return jsonify({
                 "success": False,
-                "error": f"任务不存在: {task_id}"
+                "error": f"Task not found: {task_id}"
             }), 404
         
         return jsonify({

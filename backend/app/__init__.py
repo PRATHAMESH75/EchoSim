@@ -1,80 +1,92 @@
-"""
-MiroFish Backend - Flask应用工厂
-"""
+"""Flask application factory for the launch-ready backend."""
 
 import os
 import warnings
 
-# 抑制 multiprocessing resource_tracker 的警告（来自第三方库如 transformers）
-# 需要在所有其他导入之前设置
 warnings.filterwarnings("ignore", message=".*resource_tracker.*")
 
-from flask import Flask, request
+from flask import Flask, abort, request, send_from_directory
 from flask_cors import CORS
 
 from .config import Config
-from .utils.logger import setup_logger, get_logger
+from .utils.logger import get_logger, setup_logger
 
 
 def create_app(config_class=Config):
-    """Flask应用工厂函数"""
+    """Create and configure the Flask application."""
     app = Flask(__name__)
     app.config.from_object(config_class)
-    
-    # 设置JSON编码：确保中文直接显示（而不是 \uXXXX 格式）
-    # Flask >= 2.3 使用 app.json.ensure_ascii，旧版本使用 JSON_AS_ASCII 配置
+
     if hasattr(app, 'json') and hasattr(app.json, 'ensure_ascii'):
         app.json.ensure_ascii = False
-    
-    # 设置日志
+
     logger = setup_logger('mirofish')
-    
-    # 只在 reloader 子进程中打印启动信息（避免 debug 模式下打印两次）
     is_reloader_process = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
     debug_mode = app.config.get('DEBUG', False)
     should_log_startup = not debug_mode or is_reloader_process
-    
+
     if should_log_startup:
-        logger.info("=" * 50)
-        logger.info("MiroFish Backend 启动中...")
-        logger.info("=" * 50)
-    
-    # 启用CORS
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
-    
-    # 注册模拟进程清理函数（确保服务器关闭时终止所有模拟进程）
+        logger.info('=' * 50)
+        logger.info('Backend starting')
+        logger.info('=' * 50)
+
+    cors_origins = app.config.get('CORS_ORIGINS', [])
+    if cors_origins:
+        CORS(app, resources={r"/api/*": {"origins": cors_origins}})
+        if should_log_startup:
+            logger.info('CORS enabled for %s', ', '.join(cors_origins))
+    elif should_log_startup:
+        logger.info('CORS disabled; frontend is expected to use the same origin')
+
     from .services.simulation_runner import SimulationRunner
+
     SimulationRunner.register_cleanup()
     if should_log_startup:
-        logger.info("已注册模拟进程清理函数")
-    
-    # 请求日志中间件
+        logger.info('Registered simulation cleanup handler')
+
     @app.before_request
     def log_request():
-        logger = get_logger('mirofish.request')
-        logger.debug(f"请求: {request.method} {request.path}")
-        if request.content_type and 'json' in request.content_type:
-            logger.debug(f"请求体: {request.get_json(silent=True)}")
-    
+        request_logger = get_logger('mirofish.request')
+        request_logger.debug('Request: %s %s', request.method, request.path)
+        if app.config.get('DEBUG') and app.config.get('LOG_REQUEST_BODIES'):
+            if request.content_type and 'json' in request.content_type:
+                request_logger.debug('Request body: %s', request.get_json(silent=True))
+
     @app.after_request
     def log_response(response):
-        logger = get_logger('mirofish.request')
-        logger.debug(f"响应: {response.status_code}")
+        request_logger = get_logger('mirofish.request')
+        request_logger.debug('Response: %s', response.status_code)
         return response
-    
-    # 注册蓝图
-    from .api import graph_bp, simulation_bp, report_bp
+
+    from .api import graph_bp, report_bp, sentiment_bp, simulation_bp
+
     app.register_blueprint(graph_bp, url_prefix='/api/graph')
     app.register_blueprint(simulation_bp, url_prefix='/api/simulation')
     app.register_blueprint(report_bp, url_prefix='/api/report')
-    
-    # 健康检查
+    app.register_blueprint(sentiment_bp, url_prefix='/api/sentiment')
+
     @app.route('/health')
     def health():
-        return {'status': 'ok', 'service': 'MiroFish Backend'}
-    
-    if should_log_startup:
-        logger.info("MiroFish Backend 启动完成")
-    
-    return app
+        return {'status': 'ok', 'service': 'sentiment-simulator-backend'}
 
+    frontend_dist_dir = os.path.abspath(app.config.get('FRONTEND_DIST_DIR', ''))
+
+    @app.route('/', defaults={'path': ''})
+    @app.route('/<path:path>')
+    def serve_frontend(path: str):
+        if path.startswith('api/') or path == 'health':
+            abort(404)
+        if not app.config.get('SERVE_FRONTEND'):
+            abort(404)
+        if not os.path.isdir(frontend_dist_dir):
+            abort(404)
+
+        requested_path = os.path.join(frontend_dist_dir, path)
+        if path and os.path.isfile(requested_path):
+            return send_from_directory(frontend_dist_dir, path)
+        return send_from_directory(frontend_dist_dir, 'index.html')
+
+    if should_log_startup:
+        logger.info('Backend ready')
+
+    return app

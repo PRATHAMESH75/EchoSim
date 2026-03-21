@@ -234,7 +234,9 @@ class SimulationManager:
         defined_entity_types: Optional[List[str]] = None,
         use_llm_for_profiles: bool = True,
         progress_callback: Optional[callable] = None,
-        parallel_profile_count: int = 3
+        parallel_profile_count: int = 3,
+        archetype_profiles: Optional[List] = None,
+        archetype_map: Optional[List] = None,
     ) -> SimulationState:
         """
         准备模拟环境（全程自动化）
@@ -265,120 +267,170 @@ class SimulationManager:
         try:
             state.status = SimulationStatus.PREPARING
             self._save_simulation_state(state)
-            
+
             sim_dir = self._get_simulation_dir(simulation_id)
-            
-            # ========== 阶段1: 读取并过滤实体 ==========
-            if progress_callback:
-                progress_callback("reading", 0, "正在连接Zep图谱...")
-            
-            reader = ZepEntityReader()
-            
-            if progress_callback:
-                progress_callback("reading", 30, "正在读取节点数据...")
-            
-            filtered = reader.filter_defined_entities(
-                graph_id=state.graph_id,
-                defined_entity_types=defined_entity_types,
-                enrich_with_edges=True
-            )
-            
-            state.entities_count = filtered.filtered_count
-            state.entity_types = list(filtered.entity_types)
-            
-            if progress_callback:
-                progress_callback(
-                    "reading", 100, 
-                    f"完成，共 {filtered.filtered_count} 个实体",
-                    current=filtered.filtered_count,
-                    total=filtered.filtered_count
-                )
-            
-            if filtered.filtered_count == 0:
-                state.status = SimulationStatus.FAILED
-                state.error = "没有找到符合条件的实体，请检查图谱是否正确构建"
-                self._save_simulation_state(state)
-                return state
-            
-            # ========== 阶段2: 生成Agent Profile ==========
-            total_entities = len(filtered.entities)
-            
-            if progress_callback:
-                progress_callback(
-                    "generating_profiles", 0, 
-                    "开始生成...",
-                    current=0,
-                    total=total_entities
-                )
-            
-            # 传入graph_id以启用Zep检索功能，获取更丰富的上下文
-            generator = OasisProfileGenerator(graph_id=state.graph_id)
-            
-            def profile_progress(current, total, msg):
+
+            # ========== Archetype bypass: skip Zep entity reading + LLM profile generation ==========
+            if archetype_profiles is not None:
                 if progress_callback:
                     progress_callback(
-                        "generating_profiles", 
-                        int(current / total * 100), 
-                        msg,
-                        current=current,
-                        total=total,
-                        item_name=msg
+                        "generating_profiles", 0,
+                        f"使用预设原型库生成 {len(archetype_profiles)} 个Agent...",
+                        current=0,
+                        total=len(archetype_profiles)
                     )
-            
-            # 设置实时保存的文件路径（优先使用 Reddit JSON 格式）
-            realtime_output_path = None
-            realtime_platform = "reddit"
-            if state.enable_reddit:
-                realtime_output_path = os.path.join(sim_dir, "reddit_profiles.json")
+
+                profiles = archetype_profiles
+                state.entities_count = len(profiles)
+                state.entity_types = list({
+                    p.source_entity_type for p in profiles if p.source_entity_type
+                })
+
+                # Save archetype_map if provided
+                if archetype_map is not None:
+                    from .archetype_library import save_archetype_map
+                    save_archetype_map(sim_dir, archetype_map)
+
+                generator = OasisProfileGenerator(graph_id=state.graph_id)
+                if state.enable_reddit:
+                    generator.save_profiles(
+                        profiles=profiles,
+                        file_path=os.path.join(sim_dir, "reddit_profiles.json"),
+                        platform="reddit"
+                    )
+                if state.enable_twitter:
+                    generator.save_profiles(
+                        profiles=profiles,
+                        file_path=os.path.join(sim_dir, "twitter_profiles.csv"),
+                        platform="twitter"
+                    )
+
+                state.profiles_count = len(profiles)
+                if progress_callback:
+                    progress_callback(
+                        "generating_profiles", 100,
+                        f"完成，共 {len(profiles)} 个Profile",
+                        current=len(profiles),
+                        total=len(profiles)
+                    )
+
+                # Use empty entity list for config generation (seed context provides background)
+                entities_for_config = []
+
+            else:
+                # ========== 阶段1: 读取并过滤实体 ==========
+                if progress_callback:
+                    progress_callback("reading", 0, "正在连接Zep图谱...")
+
+                reader = ZepEntityReader()
+
+                if progress_callback:
+                    progress_callback("reading", 30, "正在读取节点数据...")
+
+                filtered = reader.filter_defined_entities(
+                    graph_id=state.graph_id,
+                    defined_entity_types=defined_entity_types,
+                    enrich_with_edges=True
+                )
+
+                state.entities_count = filtered.filtered_count
+                state.entity_types = list(filtered.entity_types)
+
+                if progress_callback:
+                    progress_callback(
+                        "reading", 100,
+                        f"完成，共 {filtered.filtered_count} 个实体",
+                        current=filtered.filtered_count,
+                        total=filtered.filtered_count
+                    )
+
+                if filtered.filtered_count == 0:
+                    state.status = SimulationStatus.FAILED
+                    state.error = "没有找到符合条件的实体，请检查图谱是否正确构建"
+                    self._save_simulation_state(state)
+                    return state
+
+                # ========== 阶段2: 生成Agent Profile ==========
+                total_entities = len(filtered.entities)
+
+                if progress_callback:
+                    progress_callback(
+                        "generating_profiles", 0,
+                        "开始生成...",
+                        current=0,
+                        total=total_entities
+                    )
+
+                # 传入graph_id以启用Zep检索功能，获取更丰富的上下文
+                generator = OasisProfileGenerator(graph_id=state.graph_id)
+
+                def profile_progress(current, total, msg):
+                    if progress_callback:
+                        progress_callback(
+                            "generating_profiles",
+                            int(current / total * 100),
+                            msg,
+                            current=current,
+                            total=total,
+                            item_name=msg
+                        )
+
+                # 设置实时保存的文件路径（优先使用 Reddit JSON 格式）
+                realtime_output_path = None
                 realtime_platform = "reddit"
-            elif state.enable_twitter:
-                realtime_output_path = os.path.join(sim_dir, "twitter_profiles.csv")
-                realtime_platform = "twitter"
-            
-            profiles = generator.generate_profiles_from_entities(
-                entities=filtered.entities,
-                use_llm=use_llm_for_profiles,
-                progress_callback=profile_progress,
-                graph_id=state.graph_id,  # 传入graph_id用于Zep检索
-                parallel_count=parallel_profile_count,  # 并行生成数量
-                realtime_output_path=realtime_output_path,  # 实时保存路径
-                output_platform=realtime_platform  # 输出格式
-            )
-            
-            state.profiles_count = len(profiles)
-            
-            # 保存Profile文件（注意：Twitter使用CSV格式，Reddit使用JSON格式）
-            # Reddit 已经在生成过程中实时保存了，这里再保存一次确保完整性
-            if progress_callback:
-                progress_callback(
-                    "generating_profiles", 95, 
-                    "保存Profile文件...",
-                    current=total_entities,
-                    total=total_entities
+                if state.enable_reddit:
+                    realtime_output_path = os.path.join(sim_dir, "reddit_profiles.json")
+                    realtime_platform = "reddit"
+                elif state.enable_twitter:
+                    realtime_output_path = os.path.join(sim_dir, "twitter_profiles.csv")
+                    realtime_platform = "twitter"
+
+                profiles = generator.generate_profiles_from_entities(
+                    entities=filtered.entities,
+                    use_llm=use_llm_for_profiles,
+                    progress_callback=profile_progress,
+                    graph_id=state.graph_id,  # 传入graph_id用于Zep检索
+                    parallel_count=parallel_profile_count,  # 并行生成数量
+                    realtime_output_path=realtime_output_path,  # 实时保存路径
+                    output_platform=realtime_platform  # 输出格式
                 )
-            
-            if state.enable_reddit:
-                generator.save_profiles(
-                    profiles=profiles,
-                    file_path=os.path.join(sim_dir, "reddit_profiles.json"),
-                    platform="reddit"
-                )
-            
-            if state.enable_twitter:
-                # Twitter使用CSV格式！这是OASIS的要求
-                generator.save_profiles(
-                    profiles=profiles,
-                    file_path=os.path.join(sim_dir, "twitter_profiles.csv"),
-                    platform="twitter"
-                )
-            
-            if progress_callback:
-                progress_callback(
-                    "generating_profiles", 100, 
-                    f"完成，共 {len(profiles)} 个Profile",
-                    current=len(profiles),
-                    total=len(profiles)
-                )
+
+                state.profiles_count = len(profiles)
+
+                # 保存Profile文件（注意：Twitter使用CSV格式，Reddit使用JSON格式）
+                # Reddit 已经在生成过程中实时保存了，这里再保存一次确保完整性
+                if progress_callback:
+                    progress_callback(
+                        "generating_profiles", 95,
+                        "保存Profile文件...",
+                        current=total_entities,
+                        total=total_entities
+                    )
+
+                if state.enable_reddit:
+                    generator.save_profiles(
+                        profiles=profiles,
+                        file_path=os.path.join(sim_dir, "reddit_profiles.json"),
+                        platform="reddit"
+                    )
+
+                if state.enable_twitter:
+                    # Twitter使用CSV格式！这是OASIS的要求
+                    generator.save_profiles(
+                        profiles=profiles,
+                        file_path=os.path.join(sim_dir, "twitter_profiles.csv"),
+                        platform="twitter"
+                    )
+
+                if progress_callback:
+                    progress_callback(
+                        "generating_profiles", 100,
+                        f"完成，共 {len(profiles)} 个Profile",
+                        current=len(profiles),
+                        total=len(profiles)
+                    )
+
+                entities_for_config = filtered.entities
             
             # ========== 阶段3: LLM智能生成模拟配置 ==========
             if progress_callback:
@@ -405,7 +457,7 @@ class SimulationManager:
                 graph_id=state.graph_id,
                 simulation_requirement=simulation_requirement,
                 document_text=document_text,
-                entities=filtered.entities,
+                entities=entities_for_config,
                 enable_twitter=state.enable_twitter,
                 enable_reddit=state.enable_reddit
             )
@@ -422,7 +474,44 @@ class SimulationManager:
             config_path = os.path.join(sim_dir, "simulation_config.json")
             with open(config_path, 'w', encoding='utf-8') as f:
                 f.write(sim_params.to_json())
-            
+
+            # When using archetype profiles, patch agents_per_hour and agent_configs
+            # because the config generator received 0 entities and defaults to minimums.
+            if archetype_profiles is not None and archetype_map is not None:
+                from .archetype_library import ARCHETYPE_DEFINITIONS
+                n = len(archetype_profiles)
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+                config_data['time_config']['agents_per_hour_min'] = max(5, n // 10)
+                config_data['time_config']['agents_per_hour_max'] = max(20, n // 3)
+                agent_configs = []
+                for entry in archetype_map:
+                    arch_key = entry.get('archetype', 'casual_browser')
+                    defn = ARCHETYPE_DEFINITIONS.get(arch_key, {})
+                    al = defn.get('activity_level', 0.5)
+                    agent_configs.append({
+                        "agent_id": entry['agent_id'],
+                        "entity_uuid": f"archetype_{arch_key}_{entry['agent_id']}",
+                        "entity_name": entry.get('username', ''),
+                        "entity_type": arch_key,
+                        "activity_level": al,
+                        "posts_per_hour": round(al * 0.8, 2),
+                        "comments_per_hour": round(al * 1.5, 2),
+                        "active_hours": list(range(8, 24)),
+                        "response_delay_min": 5,
+                        "response_delay_max": 60,
+                        "sentiment_bias": defn.get('sentiment_bias', 0.0),
+                        "stance": "neutral",
+                        "influence_weight": defn.get('influence_weight', 1.0),
+                    })
+                config_data['agent_configs'] = agent_configs
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config_data, f, ensure_ascii=False, indent=2)
+                logger.info(
+                    f"Patched archetype config: agents_per_hour={config_data['time_config']['agents_per_hour_min']}"
+                    f"-{config_data['time_config']['agents_per_hour_max']}, agent_configs={len(agent_configs)}"
+                )
+
             state.config_generated = True
             state.config_reasoning = sim_params.generation_reasoning
             

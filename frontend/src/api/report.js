@@ -1,7 +1,7 @@
 import service, { requestWithRetry } from './index'
 
 /**
- * 开始报告生成
+ * Start report generation
  * @param {Object} data - { simulation_id, force_regenerate? }
  */
 export const generateReport = (data) => {
@@ -9,33 +9,36 @@ export const generateReport = (data) => {
 }
 
 /**
- * 获取报告生成状态
- * @param {string} reportId
+ * Get report generation status
+ * @param {Object|string} params - task status lookup parameters
  */
-export const getReportStatus = (reportId) => {
-  return service.get(`/api/report/generate/status`, { params: { report_id: reportId } })
+export const getReportStatus = (params) => {
+  if (typeof params === 'string') {
+    return service.get('/api/report/generate/status', { params: { task_id: params } })
+  }
+  return service.get('/api/report/generate/status', { params })
 }
 
 /**
- * 获取 Agent 日志（增量）
+ * Get Agent log (incremental)
  * @param {string} reportId
- * @param {number} fromLine - 从第几行开始获取
+ * @param {number} fromLine - Starting line number
  */
 export const getAgentLog = (reportId, fromLine = 0) => {
   return service.get(`/api/report/${reportId}/agent-log`, { params: { from_line: fromLine } })
 }
 
 /**
- * 获取控制台日志（增量）
+ * Get console log (incremental)
  * @param {string} reportId
- * @param {number} fromLine - 从第几行开始获取
+ * @param {number} fromLine - Starting line number
  */
 export const getConsoleLog = (reportId, fromLine = 0) => {
   return service.get(`/api/report/${reportId}/console-log`, { params: { from_line: fromLine } })
 }
 
 /**
- * 获取报告详情
+ * Get report details
  * @param {string} reportId
  */
 export const getReport = (reportId) => {
@@ -43,7 +46,7 @@ export const getReport = (reportId) => {
 }
 
 /**
- * 与 Report Agent 对话
+ * Chat with Report Agent
  * @param {Object} data - { simulation_id, message, chat_history? }
  */
 export const chatWithReport = (data) => {

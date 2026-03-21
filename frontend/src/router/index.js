@@ -1,52 +1,50 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
-import Process from '../views/MainView.vue'
-import SimulationView from '../views/SimulationView.vue'
-import SimulationRunView from '../views/SimulationRunView.vue'
-import ReportView from '../views/ReportView.vue'
-import InteractionView from '../views/InteractionView.vue'
+
+const SentimentView = () => import('../views/SentimentView.vue')
 
 const routes = [
   {
     path: '/',
     name: 'Home',
-    component: Home
+    component: Home,
   },
   {
-    path: '/process/:projectId',
-    name: 'Process',
-    component: Process,
-    props: true
+    path: '/sentiment',
+    name: 'SentimentSimulator',
+    component: SentimentView,
   },
   {
-    path: '/simulation/:simulationId',
-    name: 'Simulation',
-    component: SimulationView,
-    props: true
+    path: '/sentiment/campaign/:campaignId',
+    name: 'SentimentCampaign',
+    component: SentimentView,
+    props: true,
   },
   {
-    path: '/simulation/:simulationId/start',
-    name: 'SimulationRun',
-    component: SimulationRunView,
-    props: true
+    path: '/process/:pathMatch(.*)*',
+    redirect: '/sentiment',
   },
   {
-    path: '/report/:reportId',
-    name: 'Report',
-    component: ReportView,
-    props: true
+    path: '/simulation/:pathMatch(.*)*',
+    redirect: '/sentiment',
   },
   {
-    path: '/interaction/:reportId',
-    name: 'Interaction',
-    component: InteractionView,
-    props: true
-  }
+    path: '/report/:pathMatch(.*)*',
+    redirect: '/sentiment',
+  },
+  {
+    path: '/interaction/:pathMatch(.*)*',
+    redirect: '/sentiment',
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/sentiment',
+  },
 ]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
 })
 
 export default router
