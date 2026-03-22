@@ -37,7 +37,7 @@
         <input v-model="feature.description" type="text" placeholder="Brief description (optional)" class="input feature-desc" />
         <button class="btn-icon" @click="removeFeature(idx)" :disabled="form.core_features.length <= 1">×</button>
       </div>
-      <button class="btn-add" @click="addFeature" :disabled="form.core_features.length >= 5">+ Add feature</button>
+      <button class="btn-add" @click="addFeature" :disabled="form.core_features.length >= 10">+ Add feature</button>
     </div>
 
     <!-- Section 3: Pricing Model -->
@@ -294,7 +294,7 @@ const form = reactive({
 })
 
 const addFeature = () => {
-  if (form.core_features.length < 5) form.core_features.push({ name: '', description: '' })
+  if (form.core_features.length < 10) form.core_features.push({ name: '', description: '' })
 }
 const removeFeature = (idx) => {
   if (form.core_features.length > 1) form.core_features.splice(idx, 1)

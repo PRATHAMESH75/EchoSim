@@ -621,6 +621,7 @@ onMounted(async () => {
 
 .surface-card {
   padding: 24px;
+  overflow: visible;
 }
 
 .status-panel,

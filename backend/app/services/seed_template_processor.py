@@ -44,10 +44,23 @@ def validate_seed(seed_data: Dict[str, Any]) -> List[str]:
     return errors
 
 
+def _feature_name(f) -> str:
+    if isinstance(f, dict):
+        return f.get("name", "")
+    return str(f)
+
+
+def _feature_desc(f) -> str:
+    if isinstance(f, dict):
+        return f.get("description", "")
+    return ""
+
+
 def generate_markdown(seed_data: Dict[str, Any]) -> str:
     """
-    Render seed_data dict into a structured markdown document.
-    This markdown is sent to the existing ontology + graph building pipeline unchanged.
+    Render seed_data into a rich narrative document suited for LLM agent simulation.
+    Prose-first format — bullet lists are minimal. Agents parse natural language better
+    than structured data, and richer context sustains multi-round, multi-agent debates.
     """
     product_name = seed_data.get("product_name", "Unknown Product")
     product_category = seed_data.get("product_category", "Software")
@@ -60,72 +73,112 @@ def generate_markdown(seed_data: Dict[str, Any]) -> str:
     target_persona = seed_data.get("target_persona", {})
     launch_channel = seed_data.get("launch_channel", "other")
     known_risks = seed_data.get("known_risks", [])
+    trial_policy = seed_data.get("trial_policy", "")
+    billing_cycle = seed_data.get("billing_cycle", "")
+    channel_notes = seed_data.get("launch_channel_notes", "")
+    channel_label = LAUNCH_CHANNEL_LABELS.get(launch_channel, launch_channel)
 
     lines = []
+
+    # ── Header ──────────────────────────────────────────────────────────────
     lines.append(f"# {product_name}")
-    lines.append(f"\n**Category:** {product_category}")
+    lines.append(f"**{product_category}**")
     if tagline:
-        lines.append(f"\n**Tagline:** {tagline}")
-    if target_market:
-        lines.append(f"\n**Target Market:** {target_market}")
+        lines.append(f"\n> {tagline}")
     lines.append("")
 
-    # Core Features
-    lines.append("## Core Features")
+    # ── What this product is ────────────────────────────────────────────────
+    lines.append("## What Is This Product")
+    intro = (
+        f"{product_name} is a {product_category}."
+    )
+    if target_market:
+        intro += (
+            f" It is built for {target_market}."
+        )
+    if tagline:
+        intro += f' The product is positioned around a single promise: "{tagline}".'
+    lines.append(intro)
+    lines.append("")
+
+    # ── Core Features — narrative ───────────────────────────────────────────
+    lines.append("## Core Capabilities")
     if core_features:
-        for i, feature in enumerate(core_features, 1):
-            if isinstance(feature, dict):
-                name = feature.get("name", "")
-                desc = feature.get("description", "")
-                lines.append(f"{i}. **{name}** — {desc}" if desc else f"{i}. {name}")
-            else:
-                lines.append(f"{i}. {feature}")
+        feature_prose_parts = []
+        for f in core_features:
+            name = _feature_name(f)
+            desc = _feature_desc(f)
+            if name and desc:
+                feature_prose_parts.append(f"**{name}** — {desc}")
+            elif name:
+                feature_prose_parts.append(f"**{name}**")
+        if feature_prose_parts:
+            lines.append(
+                f"{product_name} ships with {len(core_features)} core capabilities:\n"
+            )
+            for part in feature_prose_parts:
+                lines.append(f"- {part}")
     else:
         lines.append("No features specified.")
     lines.append("")
 
-    # Pricing Model
-    lines.append("## Pricing Model")
+    # ── Pricing — detailed ─────────────────────────────────────────────────
+    lines.append("## Pricing and Access")
     if pricing_tiers:
+        tier_summaries = []
         for tier in pricing_tiers:
             if isinstance(tier, dict):
-                tier_name = tier.get("name", "Tier")
-                price = tier.get("price", "")
-                description = tier.get("description", "")
-                lines.append(f"- **{tier_name}**: {price}")
-                if description:
-                    lines.append(f"  {description}")
+                t_name = tier.get("name", "Tier")
+                t_price = tier.get("price", "")
+                t_desc = tier.get("description", "")
+                summary = f"**{t_name}** at {t_price}" if t_price else f"**{t_name}**"
+                if t_desc:
+                    summary += f" — {t_desc}"
+                tier_summaries.append(summary)
             else:
-                lines.append(f"- {tier}")
-    trial_policy = seed_data.get("trial_policy", "")
-    billing_cycle = seed_data.get("billing_cycle", "")
+                tier_summaries.append(str(tier))
+        pricing_prose = (
+            f"{product_name} uses a tiered pricing model with {len(pricing_tiers)} tier(s): "
+            + "; ".join(tier_summaries) + "."
+        )
+        lines.append(pricing_prose)
+
+    pricing_notes = []
     if trial_policy:
-        lines.append(f"\n**Trial Policy:** {trial_policy}")
+        pricing_notes.append(f"Trial policy: {trial_policy}.")
     if billing_cycle:
-        lines.append(f"**Billing:** {billing_cycle}")
+        pricing_notes.append(f"Billing: {billing_cycle}.")
+    if pricing_notes:
+        lines.append(" ".join(pricing_notes))
     lines.append("")
 
-    # Competitive Context
-    lines.append("## Competitive Context")
+    # ── Competitive Landscape — narrative ──────────────────────────────────
+    lines.append("## Competitive Landscape")
     if competitors:
+        lines.append(
+            f"{product_name} enters a market with {len(competitors)} established player(s). "
+            "Here is how each compares:\n"
+        )
         for comp in competitors:
             if isinstance(comp, dict):
-                comp_name = comp.get("name", "")
-                strength = comp.get("strength", "")
-                gap = comp.get("gap", "")
-                lines.append(f"- **{comp_name}**")
-                if strength:
-                    lines.append(f"  - Strength: {strength}")
-                if gap:
-                    lines.append(f"  - Gap: {gap}")
+                c_name = comp.get("name", "")
+                c_strength = comp.get("strength", "")
+                c_gap = comp.get("gap", "")
+                entry = f"**{c_name}**"
+                if c_strength:
+                    entry += f" — Known for: {c_strength}."
+                if c_gap:
+                    entry += f" Gap: {c_gap}."
+                lines.append(f"- {entry}")
             else:
                 lines.append(f"- {comp}")
     else:
-        lines.append("No competitors specified.")
+        lines.append("No competitive context provided.")
     lines.append("")
 
-    # Target Persona
-    lines.append("## Target Persona")
+    # ── Target Persona — rich prose ─────────────────────────────────────────
+    lines.append("## Who This Is For")
+    persona_parts = []
     if isinstance(target_persona, dict):
         age_range = target_persona.get("age_range", "")
         income = target_persona.get("income_level", "")
@@ -133,70 +186,97 @@ def generate_markdown(seed_data: Dict[str, Any]) -> str:
         pain_points = target_persona.get("pain_points", "")
         buying_triggers = target_persona.get("buying_triggers", "")
 
+        if target_market:
+            persona_parts.append(target_market)
         if age_range:
-            lines.append(f"- **Age Range:** {age_range}")
+            persona_parts.append(f"Core age range: {age_range}.")
         if income:
-            lines.append(f"- **Income Level:** {income}")
+            persona_parts.append(f"Income level: {income}.")
         if psychographics:
             tags = psychographics if isinstance(psychographics, str) else ", ".join(psychographics)
-            lines.append(f"- **Psychographics:** {tags}")
+            persona_parts.append(f"Psychographic profile: {tags}.")
         if pain_points:
-            lines.append(f"- **Pain Points:** {pain_points}")
+            persona_parts.append(
+                f"The pain this product addresses: {pain_points}"
+            )
         if buying_triggers:
-            lines.append(f"- **Buying Triggers:** {buying_triggers}")
+            persona_parts.append(
+                f"These users are typically moved to act when: {buying_triggers}"
+            )
     elif isinstance(target_persona, str) and target_persona:
-        lines.append(target_persona)
+        persona_parts.append(target_persona)
+
+    if persona_parts:
+        lines.append(" ".join(persona_parts))
+    else:
+        lines.append("No persona information provided.")
     lines.append("")
 
-    # Launch Channel
-    lines.append("## Launch Channel")
-    channel_label = LAUNCH_CHANNEL_LABELS.get(launch_channel, launch_channel)
-    lines.append(f"Primary launch channel: **{channel_label}**")
-    channel_notes = seed_data.get("launch_channel_notes", "")
+    # ── Launch Strategy ─────────────────────────────────────────────────────
+    lines.append("## Launch Strategy")
+    launch_prose = f"The product is launching primarily via **{channel_label}**."
     if channel_notes:
-        lines.append(f"\n{channel_notes}")
+        launch_prose += f" {channel_notes}"
+    lines.append(launch_prose)
     lines.append("")
 
-    # Known Risks
-    lines.append("## Known Risks")
+    # ── Known Risks — deliberate negative signals ───────────────────────────
+    lines.append("## Known Risks and Vulnerabilities")
     if known_risks:
+        lines.append(
+            f"The team has identified {len(known_risks)} risk(s) that may shape "
+            "market reception. These are real concerns that agents should debate, "
+            "amplify, or dismiss based on their persona:\n"
+        )
         for risk in known_risks:
-            if isinstance(risk, str) and risk.strip():
-                lines.append(f"- {risk}")
+            risk_str = risk if isinstance(risk, str) else risk.get("description", "")
+            if risk_str.strip():
+                lines.append(f"- {risk_str}")
     else:
         lines.append("No specific risks identified.")
     lines.append("")
 
-    # Product Overview Summary (for LLM context quality)
-    lines.append("## Product Overview Summary")
-    feature_list = []
-    for f in core_features[:3]:
-        if isinstance(f, dict):
-            feature_list.append(f.get("name", ""))
-        else:
-            feature_list.append(str(f))
-    feature_summary = ", ".join(feature_list) if feature_list else "multiple features"
+    # ── Simulation Framing ──────────────────────────────────────────────────
+    lines.append("## Simulation Context")
+    all_feature_names = [_feature_name(f) for f in core_features if _feature_name(f)]
+    comp_names = []
+    for c in competitors:
+        n = c.get("name", "") if isinstance(c, dict) else str(c)
+        if n:
+            comp_names.append(n)
 
-    lines.append(
-        f"{product_name} is a {product_category} targeting {target_market}. "
-        f"It offers {feature_summary}. "
-        f"It is entering a market with {len(competitors)} known competitor(s). "
-        f"The primary launch channel is {channel_label}."
+    framing = (
+        f"{product_name} is launching into the {product_category} space. "
+        f"It is competing directly with {', '.join(comp_names) if comp_names else 'existing solutions'}. "
     )
-    if known_risks:
-        risk_summary = "; ".join(
-            r if isinstance(r, str) else r.get("description", "")
-            for r in known_risks[:3]
+    if all_feature_names:
+        framing += (
+            f"Its differentiated capabilities — {', '.join(all_feature_names)} — "
+            "are the primary drivers of interest, objection, and debate among prospective users. "
         )
-        lines.append(f"Known risks include: {risk_summary}.")
+    if known_risks:
+        risk_list = [r if isinstance(r, str) else r.get("description", "") for r in known_risks]
+        risk_list = [r for r in risk_list if r.strip()]
+        framing += (
+            f"The most contentious open questions are: {'; '.join(risk_list[:5])}. "
+        )
+    framing += (
+        "Agents should form opinions grounded in their persona type, discuss the product "
+        "openly on simulated social feeds, influence each other, and evolve their stance "
+        "across rounds based on what they read and hear."
+    )
+    lines.append(framing)
+    lines.append("")
 
     return "\n".join(lines)
 
 
 def generate_simulation_requirement(seed_data: Dict[str, Any]) -> str:
     """
-    Generate a natural language simulation_requirement string from seed data.
-    This is passed to SimulationConfigGenerator as context for agent behavior generation.
+    Generate a rich natural language simulation_requirement string from seed data.
+    Uses ALL features, ALL competitors, and ALL risks — not truncated subsets.
+    Designed for high-round, high-agent-count simulations where agents need
+    enough textual surface area to sustain diverse, non-repetitive debate.
     """
     product_name = seed_data.get("product_name", "the product")
     product_category = seed_data.get("product_category", "software")
@@ -204,46 +284,121 @@ def generate_simulation_requirement(seed_data: Dict[str, Any]) -> str:
     tagline = seed_data.get("tagline", "")
     known_risks = seed_data.get("known_risks", [])
     competitors = seed_data.get("competitors", [])
+    pricing_tiers = seed_data.get("pricing_tiers", [])
     launch_channel = seed_data.get("launch_channel", "social media")
     channel_label = LAUNCH_CHANNEL_LABELS.get(launch_channel, launch_channel)
+    trial_policy = seed_data.get("trial_policy", "")
+    billing_cycle = seed_data.get("billing_cycle", "")
+    target_persona = seed_data.get("target_persona", {})
 
+    # All features
     core_features = seed_data.get("core_features", [])
-    feature_names = []
-    for f in core_features[:3]:
-        if isinstance(f, dict):
-            feature_names.append(f.get("name", ""))
-        else:
-            feature_names.append(str(f))
-    feature_str = ", ".join(feature_names) if feature_names else "its core features"
+    feature_parts = []
+    for f in core_features:
+        name = _feature_name(f)
+        desc = _feature_desc(f)
+        if name and desc:
+            feature_parts.append(f"{name} ({desc})")
+        elif name:
+            feature_parts.append(name)
+    feature_str = "; ".join(feature_parts) if feature_parts else "its core features"
 
-    comp_names = []
-    for c in competitors[:2]:
+    # All competitors with context
+    comp_parts = []
+    for c in competitors:
         if isinstance(c, dict):
-            comp_names.append(c.get("name", ""))
-        else:
-            comp_names.append(str(c))
-    comp_str = " and ".join(comp_names) if comp_names else "existing solutions"
+            c_name = c.get("name", "")
+            c_strength = c.get("strength", "")
+            c_gap = c.get("gap", "")
+            entry = c_name
+            if c_strength:
+                entry += f" (strong in: {c_strength}"
+                if c_gap:
+                    entry += f"; gap: {c_gap}"
+                entry += ")"
+            elif c_gap:
+                entry += f" (gap: {c_gap})"
+            comp_parts.append(entry)
+        elif c:
+            comp_parts.append(str(c))
+    comp_str = "; ".join(comp_parts) if comp_parts else "existing solutions"
 
-    risk_str = ""
-    if known_risks:
-        risks = []
-        for r in known_risks[:2]:
-            risks.append(r if isinstance(r, str) else r.get("description", ""))
-        risk_str = f" Key concerns include: {'; '.join(risks)}."
+    # All risks
+    risk_parts = []
+    for r in known_risks:
+        r_str = r if isinstance(r, str) else r.get("description", "")
+        if r_str.strip():
+            risk_parts.append(r_str)
 
-    requirement = (
-        f"Simulate market sentiment and consumer reactions to the launch of {product_name}, "
-        f"a {product_category} targeting {target_market}. "
+    # Pricing summary
+    pricing_parts = []
+    for tier in pricing_tiers:
+        if isinstance(tier, dict):
+            t_name = tier.get("name", "")
+            t_price = tier.get("price", "")
+            t_desc = tier.get("description", "")
+            entry = f"{t_name} at {t_price}" if t_price else t_name
+            if t_desc:
+                entry += f" ({t_desc})"
+            pricing_parts.append(entry)
+        elif tier:
+            pricing_parts.append(str(tier))
+    pricing_str = "; ".join(pricing_parts) if pricing_parts else "undisclosed pricing"
+
+    # Persona detail
+    persona_str = ""
+    if isinstance(target_persona, dict):
+        pain = target_persona.get("pain_points", "")
+        triggers = target_persona.get("buying_triggers", "")
+        age = target_persona.get("age_range", "")
+        if pain:
+            persona_str += f" Their core pain: {pain}."
+        if triggers:
+            persona_str += f" Buying triggers: {triggers}."
+        if age:
+            persona_str += f" Age range: {age}."
+    elif isinstance(target_persona, str) and target_persona:
+        persona_str = f" Persona detail: {target_persona}."
+
+    # Build the requirement
+    req = (
+        f"Simulate the full market reception to the launch of {product_name}, "
+        f"a {product_category} targeting {target_market}."
     )
     if tagline:
-        requirement += f'The product is positioned as: "{tagline}". '
-    requirement += (
-        f"Key features: {feature_str}. "
-        f"Competitors include {comp_str}. "
-        f"The product is launching via {channel_label}."
-        f"{risk_str} "
-        "Agents should discuss and debate the product's value proposition, pricing, "
-        "features, and competitive positioning. Simulate how different consumer segments "
-        "react, form opinions, and influence each other across social platforms."
+        req += f' Core promise: "{tagline}".'
+    req += (
+        f"\n\nPRICING: {pricing_str}."
     )
-    return requirement.strip()
+    if trial_policy:
+        req += f" {trial_policy}."
+    if billing_cycle:
+        req += f" {billing_cycle}."
+    req += (
+        f"\n\nFEATURES ({len(core_features)} total): {feature_str}."
+        f"\n\nCOMPETITORS ({len(comp_parts)} total): {comp_str}."
+        f"\n\nLAUNCH CHANNEL: {channel_label}."
+    )
+    req += f"\n\nTARGET MARKET: {target_market}.{persona_str}"
+
+    if risk_parts:
+        req += (
+            f"\n\nKNOWN RISKS ({len(risk_parts)} identified — agents should probe these): "
+            + "; ".join(risk_parts) + "."
+        )
+
+    req += (
+        "\n\nSIMULATION INSTRUCTIONS: Agents must form independent opinions grounded in "
+        "their assigned persona. Discussions should cover: (1) value proposition vs. "
+        f"competitors like {comp_str[:80]}; "
+        "(2) pricing fairness — whether each tier represents good value; "
+        "(3) feature depth — does it solve the stated pain points; "
+        "(4) trust and credibility signals — privacy, AI reliability, single-developer risk; "
+        "(5) switching cost from existing tools; "
+        "(6) social proof dynamics — who gets influenced by early adopter enthusiasm. "
+        "Agents should change their stance over rounds as they see peer opinions, "
+        "not simply repeat their initial position. Minority opinions must be given "
+        "room to surface and potentially shift the conversation."
+    )
+
+    return req.strip()
