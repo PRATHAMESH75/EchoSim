@@ -5,10 +5,11 @@ import warnings
 
 warnings.filterwarnings("ignore", message=".*resource_tracker.*")
 
-from flask import Flask, abort, request, send_from_directory
+from flask import Flask, abort, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 from .config import Config
+from .extensions import limiter
 from .utils.logger import get_logger, setup_logger
 
 
@@ -37,6 +38,32 @@ def create_app(config_class=Config):
             logger.info('CORS enabled for %s', ', '.join(cors_origins))
     elif should_log_startup:
         logger.info('CORS disabled; frontend is expected to use the same origin')
+
+    # Rate limiting
+    limiter.init_app(app)
+    if should_log_startup:
+        logger.info('Rate limiting enabled (300 req/min default per IP)')
+
+    # Optional API-key authentication (enabled only when APP_API_KEY is set)
+    app_api_key = app.config.get('APP_API_KEY', '').strip()
+    if app_api_key:
+        @app.before_request
+        def require_api_key():
+            if not request.path.startswith('/api/'):
+                return
+            if request.path == '/api/health':
+                return
+            provided = (
+                request.headers.get('X-Api-Key', '').strip()
+                or request.headers.get('Authorization', '').removeprefix('Bearer ').strip()
+            )
+            if provided != app_api_key:
+                return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+        if should_log_startup:
+            logger.info('API key authentication enabled')
+    elif should_log_startup:
+        logger.info('API key authentication disabled (APP_API_KEY not set)')
 
     from .services.simulation_runner import SimulationRunner
 

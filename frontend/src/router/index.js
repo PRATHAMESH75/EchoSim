@@ -21,22 +21,6 @@ const routes = [
     props: true,
   },
   {
-    path: '/process/:pathMatch(.*)*',
-    redirect: '/sentiment',
-  },
-  {
-    path: '/simulation/:pathMatch(.*)*',
-    redirect: '/sentiment',
-  },
-  {
-    path: '/report/:pathMatch(.*)*',
-    redirect: '/sentiment',
-  },
-  {
-    path: '/interaction/:pathMatch(.*)*',
-    redirect: '/sentiment',
-  },
-  {
     path: '/:pathMatch(.*)*',
     redirect: '/sentiment',
   },

@@ -11,6 +11,7 @@ authors = [
 dependencies = [
     "flask>=3.0.0",
     "flask-cors>=6.0.0",
+    "flask-limiter>=3.5.0",
     "openai>=1.0.0",
     "zep-cloud==3.13.0",
     "camel-oasis==0.2.5",

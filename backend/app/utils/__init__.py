@@ -1,6 +1,4 @@
-"""
-工具模块
-"""
+"""Utility helpers."""
 
 from .file_parser import FileParser
 from .llm_client import LLMClient

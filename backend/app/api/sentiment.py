@@ -9,6 +9,7 @@ from flask import request, jsonify
 
 from . import sentiment_bp
 from ..config import Config
+from ..extensions import limiter
 from ..utils.logger import get_logger
 from ..services.campaign_manager import CampaignManager
 from ..services.sentiment_analyzer import SentimentAnalyzer, compare_scenarios
@@ -79,6 +80,7 @@ def get_archetypes():
 # ── Campaign Lifecycle ────────────────────────────────────────────────────────
 
 @sentiment_bp.route('/campaign/create', methods=['POST'])
+@limiter.limit("10 per hour")
 def create_campaign():
     """
     Create a new sentiment campaign.
@@ -132,6 +134,7 @@ def create_campaign():
 
 
 @sentiment_bp.route('/campaign/<campaign_id>/prepare', methods=['POST'])
+@limiter.limit("10 per hour")
 def prepare_campaign(campaign_id: str):
     """
     Start asynchronous preparation for all three scenarios.
@@ -166,6 +169,7 @@ def get_prepare_campaign_status(campaign_id: str):
 
 
 @sentiment_bp.route('/campaign/<campaign_id>/start', methods=['POST'])
+@limiter.limit("10 per hour")
 def start_campaign(campaign_id: str):
     """
     Start the campaign (launches background workers running all 3 scenarios in parallel).
@@ -177,7 +181,7 @@ def start_campaign(campaign_id: str):
     try:
         body = request.get_json(force=True) or {}
         platform = body.get("platform", "parallel")
-        max_rounds = int(body.get("max_rounds", Config.SENTIMENT_DEFAULT_MAX_ROUNDS))
+        max_rounds = min(int(body.get("max_rounds", Config.SENTIMENT_DEFAULT_MAX_ROUNDS)), 150)
 
         campaign = _campaign_manager.start_campaign(
             campaign_id=campaign_id,
@@ -202,6 +206,19 @@ def get_campaign(campaign_id: str):
         return jsonify({"success": False, "error": str(e)}), 404
     except Exception as e:
         logger.error(f"Get campaign error: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@sentiment_bp.route('/campaign/<campaign_id>', methods=['DELETE'])
+def delete_campaign(campaign_id: str):
+    """Delete a campaign and its associated simulation data."""
+    try:
+        _campaign_manager.delete_campaign(campaign_id)
+        return jsonify({"success": True, "campaign_id": campaign_id})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Delete campaign error: {traceback.format_exc()}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 

@@ -57,6 +57,12 @@ export const listCampaigns = () =>
   service.get('/api/sentiment/campaign')
 
 /**
+ * Delete a campaign and its simulation data.
+ */
+export const deleteCampaign = (campaignId) =>
+  service.delete(`/api/sentiment/campaign/${campaignId}`)
+
+/**
  * Inject a God's Eye event into a running scenario.
  * @param {string} campaignId
  * @param {Object} data - { scenario: 'b'|'c', event_type?, custom_prompt? }

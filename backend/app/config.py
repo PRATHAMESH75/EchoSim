@@ -40,6 +40,8 @@ class Config:
 
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
 
+    APP_API_KEY = os.environ.get('APP_API_KEY', '').strip()
+
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024
     UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), '../uploads')
     ALLOWED_EXTENSIONS = {'pdf', 'md', 'txt', 'markdown'}

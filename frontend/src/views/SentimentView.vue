@@ -42,6 +42,7 @@
         <div v-else-if="currentStep === 1" class="surface-card">
           <ArchetypeReview
             :totalAgents="seedData.total_agents"
+            :graphBuilding="buildingGraph"
             @back="currentStep = 0"
             @next="handleArchetypeConfirm"
           />
@@ -100,6 +101,9 @@
               @back="currentStep = 1"
               @next="goToDashboard"
             />
+            <div v-else class="error-banner">
+              No active campaign. Go back to step 1 and complete the archetype review.
+            </div>
           </template>
         </div>
 
@@ -388,6 +392,7 @@ const handleSeedSubmit = async (data) => {
 
 const handleArchetypeConfirm = async () => {
   if (buildingGraph.value) {
+    buildError.value = 'The knowledge graph is still being built. Please wait.'
     return
   }
   if (!graphId.value) {

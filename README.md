@@ -34,18 +34,28 @@ Legacy graph, simulation, and report capabilities remain backend-capable, but th
 
 - Node.js 18+
 - Python 3.11+
-- `uv`
 
 ### Environment
 
-Create `.env` in the project root and set at least:
+Copy `.env.example` to `.env` and fill in the required values:
 
 ```bash
-SECRET_KEY=replace-me
-LLM_API_KEY=replace-me
-ZEP_API_KEY=replace-me
+cp .env.example .env
+```
+
+Required keys:
+
+```bash
+SECRET_KEY=        # generate: python -c "import secrets; print(secrets.token_hex(32))"
+LLM_API_KEY=       # OpenAI-compatible API key
+ZEP_API_KEY=       # Zep Cloud key — free tier: https://app.getzep.com/
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL_NAME=gpt-4o-mini
+```
+
+For local development (separate frontend/backend processes), also add:
+
+```bash
 FRONTEND_ORIGIN=http://localhost:3000
 CORS_ORIGINS=http://localhost:3000
 VITE_API_BASE_URL=http://localhost:5001
@@ -54,14 +64,14 @@ VITE_API_BASE_URL=http://localhost:5001
 ### Install
 
 ```bash
-npm install
-npm install --prefix frontend
-cd backend && uv sync --frozen
+# Frontend dependencies
+npm run setup
+
+# Backend dependencies (Python 3.11+, standard pip)
+pip install -r backend/requirements.txt
 ```
 
 ### Run
-
-From the repository root:
 
 ```bash
 npm run dev
@@ -74,16 +84,14 @@ Services:
 
 ## Production build
 
-Build the frontend locally:
-
 ```bash
-npm run build --prefix frontend
+npm run build
 ```
 
-Run backend tests:
+Then start the backend; it serves the compiled frontend from the same process:
 
 ```bash
-backend/.venv/bin/python -m pytest -q backend/tests
+cd backend && python run.py
 ```
 
 ## Docker

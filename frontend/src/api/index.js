@@ -9,9 +9,13 @@ const service = axios.create({
   }
 })
 
-// Request interceptor
+// Request interceptor — attach API key if configured at build time
 service.interceptors.request.use(
   config => {
+    const apiKey = import.meta.env.VITE_APP_API_KEY
+    if (apiKey) {
+      config.headers['X-Api-Key'] = apiKey
+    }
     return config
   },
   error => {

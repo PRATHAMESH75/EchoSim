@@ -11,11 +11,12 @@ Reads actions.jsonl files from completed (or running) simulations and:
 
 import json
 import os
+import time
 from copy import deepcopy
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 
 from ..config import Config
 from ..utils.logger import get_logger
@@ -209,13 +210,15 @@ class SentimentAnalyzer:
 
     TOPIC_CATEGORIES = ["pricing", "features", "support", "security", "competitors", "performance", "ux", "other"]
 
-    def _classify_batch(self, posts: List[str]) -> Tuple[List[float], List[List[str]]]:
+    def _classify_batch(self, posts: List[str]) -> Tuple[List[float], List[List[str]], bool]:
         """
-        Classify a batch of posts and return (sentiment_scores, topic_tags).
-        Merges sentiment and topic extraction into a single LLM call.
+        Classify a batch of posts and return (sentiment_scores, topic_tags, success).
+        Retries with exponential backoff on rate-limit (429) errors.
+        Returns success=False when all retries are exhausted so the caller can
+        skip caching a result made entirely of fallback zeros.
         """
         if not posts:
-            return [], []
+            return [], [], True
 
         numbered = "\n".join(
             f"Post {i + 1}: {p[:300]}" for i, p in enumerate(posts)
@@ -232,31 +235,47 @@ class SentimentAnalyzer:
             f"{numbered}"
         )
 
-        try:
-            response = self._llm.chat.completions.create(
-                model=self._model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                max_tokens=512,
-                response_format={"type": "json_object"},
-            )
-            raw = response.choices[0].message.content or "{}"
-            data = json.loads(raw)
-            results = data.get("results", [])
+        max_retries = 5
+        backoff = 2.0
+        for attempt in range(max_retries):
+            try:
+                response = self._llm.chat.completions.create(
+                    model=self._model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    max_tokens=512,
+                    response_format={"type": "json_object"},
+                )
+                raw = response.choices[0].message.content or "{}"
+                data = json.loads(raw)
+                results = data.get("results", [])
 
-            if len(results) != len(posts):
-                # Fallback: try old format
-                scores = data.get("scores", [])
-                if len(scores) == len(posts):
-                    return [max(-1.0, min(1.0, float(s))) for s in scores], [[] for _ in posts]
-                return [0.0] * len(posts), [[] for _ in posts]
+                # Tolerate off-by-one: LLM occasionally returns n±1 results.
+                # Truncate extras or pad missing entries rather than discarding everything.
+                if len(results) > len(posts):
+                    results = results[:len(posts)]
+                elif len(results) < len(posts):
+                    while len(results) < len(posts):
+                        results.append({"score": 0.0, "topics": []})
 
-            scores = [max(-1.0, min(1.0, float(r.get("score", 0.0)))) for r in results]
-            topics = [r.get("topics", []) for r in results]
-            return scores, topics
-        except Exception as e:
-            logger.warning(f"Sentiment classification failed: {e}")
-            return [0.0] * len(posts), [[] for _ in posts]
+                scores = [max(-1.0, min(1.0, float(r.get("score", 0.0)))) for r in results]
+                topics = [r.get("topics", []) for r in results]
+                return scores, topics, True
+
+            except RateLimitError as e:
+                if attempt < max_retries - 1:
+                    wait = backoff * (2 ** attempt)
+                    logger.warning(f"Rate limit hit, retrying in {wait:.1f}s (attempt {attempt + 1}/{max_retries}): {e}")
+                    time.sleep(wait)
+                else:
+                    logger.warning(f"Sentiment classification failed after {max_retries} retries (rate limit): {e}")
+                    return [0.0] * len(posts), [[] for _ in posts], False
+
+            except Exception as e:
+                logger.warning(f"Sentiment classification failed: {e}")
+                return [0.0] * len(posts), [[] for _ in posts], False
+
+        return [0.0] * len(posts), [[] for _ in posts], False
 
     def _load_all_actions(self) -> List[Dict[str, Any]]:
         """Load all actions from twitter and reddit JSONL files."""
@@ -315,11 +334,20 @@ class SentimentAnalyzer:
         all_contents = [c for _, _, c in all_posts_with_meta]
         raw_scores: List[float] = []
         all_topics: List[List[str]] = []
+        failed_batches = 0
+        total_batches = 0
         for i in range(0, len(all_contents), BATCH_SIZE):
             batch = all_contents[i: i + BATCH_SIZE]
-            batch_scores, batch_topics = self._classify_batch(batch)
+            batch_scores, batch_topics, success = self._classify_batch(batch)
             raw_scores.extend(batch_scores)
             all_topics.extend(batch_topics)
+            total_batches += 1
+            if not success:
+                failed_batches += 1
+
+        # Don't cache results where all batches failed (rate limit / API down).
+        # The next request will re-run analysis and pick up a valid result.
+        all_batches_failed = total_batches > 0 and failed_batches == total_batches
 
         # Apply sentiment momentum smoothing per agent across rounds
         # Prevents unrealistic instant sentiment flips (e.g., skeptic going -0.3 to +0.8)
@@ -514,7 +542,13 @@ class SentimentAnalyzer:
             },
             "anomalies": anomalies,
         }
-        self._store_cache_entry(result)
+        if not all_batches_failed:
+            self._store_cache_entry(result)
+        else:
+            logger.warning(
+                f"Skipping cache write for {self.simulation_id}: all {total_batches} "
+                "sentiment batches failed (likely rate-limited). Will retry on next request."
+            )
         return result
 
     def _compute_factions(

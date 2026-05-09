@@ -271,7 +271,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getCampaignSentiment, compareScenarios } from '../api/sentiment.js'
 
 const props = defineProps({
@@ -282,6 +282,7 @@ defineEmits(['back'])
 
 const loading = ref(false)
 const loadingCompare = ref(false)
+let autoRetryTimer = null
 const error = ref(null)
 const data = ref(null)
 const compareData = ref(null)
@@ -349,11 +350,11 @@ const weightedTimelineCoords = computed(() => {
   const n = tl.length
   const xStep = (chartW - chartPad * 2) / Math.max(n - 1, 1)
   return tl
-    .filter(pt => pt.weighted_avg_score !== undefined)
-    .map((pt, i) => ({
+    .map((pt, i) => pt.weighted_avg_score !== undefined ? {
       x: chartPad + i * xStep,
       y: zeroY.value - pt.weighted_avg_score * (chartH - chartPad * 2) / 2,
-    }))
+    } : null)
+    .filter(Boolean)
 })
 
 const weightedTimelinePoints = computed(() =>
@@ -440,6 +441,12 @@ const exportCSV = () => {
   URL.revokeObjectURL(url)
 }
 
+const _hasData = (res) => {
+  return res && (res.scenario_a?.total_posts_analyzed > 0 ||
+                 res.scenario_b?.total_posts_analyzed > 0 ||
+                 res.scenario_c?.total_posts_analyzed > 0)
+}
+
 const loadData = async () => {
   loading.value = true
   error.value = null
@@ -449,8 +456,31 @@ const loadData = async () => {
     if (res.event_markers) {
       eventMarkers.value = res.event_markers
     }
+    // Auto-retry every 30 s while the simulation hasn't produced posts yet
+    if (!_hasData(res)) {
+      if (!autoRetryTimer) {
+        autoRetryTimer = setInterval(async () => {
+          try {
+            const r = await getCampaignSentiment(props.campaignId)
+            data.value = r
+            if (r.event_markers) eventMarkers.value = r.event_markers
+            if (_hasData(r)) {
+              clearInterval(autoRetryTimer)
+              autoRetryTimer = null
+            }
+          } catch {
+            // keep retrying silently
+          }
+        }, 30000)
+      }
+    } else {
+      if (autoRetryTimer) {
+        clearInterval(autoRetryTimer)
+        autoRetryTimer = null
+      }
+    }
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to load sentiment data'
+    error.value = e?.response?.data?.error || e?.message || 'Failed to load sentiment data'
   } finally {
     loading.value = false
   }
@@ -470,6 +500,7 @@ const loadComparison = async () => {
 }
 
 onMounted(loadData)
+onUnmounted(() => { if (autoRetryTimer) clearInterval(autoRetryTimer) })
 </script>
 
 <style scoped>

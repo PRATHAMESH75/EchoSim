@@ -217,7 +217,7 @@ const handleInject = async () => {
     await fetchStatus()
   } catch (e) {
     injectError.value = true
-    injectMessage.value = e?.response?.data?.error || 'Injection failed'
+    injectMessage.value = e?.response?.data?.error || e?.message || 'Injection failed'
   } finally {
     injecting.value = false
   }

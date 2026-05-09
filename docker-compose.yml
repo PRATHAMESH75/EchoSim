@@ -4,6 +4,9 @@ services:
       context: .
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        # Pass through the API key so the frontend bundle can authenticate
+        # Must match APP_API_KEY in .env (leave both empty for open access)
+        VITE_APP_API_KEY: ${VITE_APP_API_KEY:-}
     container_name: sentiment-simulator
     env_file:
       - .env
@@ -12,3 +15,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./backend/uploads:/app/backend/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

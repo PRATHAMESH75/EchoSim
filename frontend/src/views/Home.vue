@@ -30,7 +30,7 @@
               <span class="metric-label">parallel scenarios</span>
             </div>
             <div class="metric">
-              <span class="metric-value">9</span>
+              <span class="metric-value">19</span>
               <span class="metric-label">consumer archetypes</span>
             </div>
             <div class="metric">

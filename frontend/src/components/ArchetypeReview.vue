@@ -47,7 +47,9 @@
 
     <div class="review-actions">
       <button class="btn-back" @click="$emit('back')">← Back</button>
-      <button class="btn-next" @click="$emit('next')">Confirm population →</button>
+      <button class="btn-next" @click="$emit('next')" :disabled="graphBuilding">
+        {{ graphBuilding ? 'Waiting for graph...' : 'Confirm population →' }}
+      </button>
     </div>
   </div>
 </template>
@@ -57,7 +59,8 @@ import { ref, onMounted } from 'vue'
 import { getArchetypes } from '../api/sentiment.js'
 
 const props = defineProps({
-  totalAgents: { type: Number, default: 50 }
+  totalAgents: { type: Number, default: 50 },
+  graphBuilding: { type: Boolean, default: false },
 })
 
 defineEmits(['back', 'next'])
@@ -162,5 +165,6 @@ const influenceClass = (val) => ({
 .btn-back { background: #fff; color: #111; }
 .btn-next { background: #111; color: #fff; }
 .btn-back:hover { background: #f5f5f5; }
-.btn-next:hover { background: #333; }
+.btn-next:hover:not(:disabled) { background: #333; }
+.btn-next:disabled { opacity: 0.5; cursor: default; }
 </style>

@@ -166,7 +166,7 @@ class CampaignManager:
         os.makedirs(self.CAMPAIGN_DATA_DIR, exist_ok=True)
         self._sim_manager = SimulationManager()
         self._task_manager = TaskManager()
-        self._save_lock = threading.Lock()
+        self._save_lock = threading.RLock()
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
@@ -178,8 +178,9 @@ class CampaignManager:
     def _save(self, state: CampaignState):
         state.updated_at = datetime.now().isoformat()
         path = os.path.join(self._campaign_dir(state.campaign_id), "campaign.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(state.to_dict(), f, ensure_ascii=False, indent=2)
+        with self._save_lock:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(state.to_dict(), f, ensure_ascii=False, indent=2)
 
     def _load(self, campaign_id: str) -> Optional[CampaignState]:
         path = os.path.join(self._campaign_dir(campaign_id), "campaign.json")
@@ -516,7 +517,10 @@ class CampaignManager:
         if not campaign:
             raise ValueError(f"Campaign not found: {campaign_id}")
 
-        sim_id = campaign.sim_id_b if scenario.lower() == "b" else campaign.sim_id_c
+        scenario = scenario.lower()
+        if scenario not in ("b", "c"):
+            raise ValueError(f"scenario must be 'b' or 'c', got: {scenario!r}")
+        sim_id = campaign.sim_id_b if scenario == "b" else campaign.sim_id_c
         product_name = campaign.seed_data.get("product_name", "the product")
 
         if custom_prompt:
@@ -571,13 +575,15 @@ class CampaignManager:
                         "runner_status": rs.runner_status.value,
                         "current_round": rs.current_round,
                         "total_rounds": rs.total_rounds,
-                        "twitter_status": rs.twitter_status,
-                        "reddit_status": rs.reddit_status,
+                        "twitter_running": rs.twitter_running,
+                        "reddit_running": rs.reddit_running,
+                        "twitter_completed": rs.twitter_completed,
+                        "reddit_completed": rs.reddit_completed,
                         "recent_actions_count": len(rs.recent_actions),
                         "recent_actions": [action.to_dict() for action in rs.recent_actions[:12]],
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to get run state for %s: %s", sim_id, e)
             # Fall back to SimulationManager state
             try:
                 sm = SimulationManager()
@@ -594,6 +600,29 @@ class CampaignManager:
             "scenario_b": _run_state(campaign.sim_id_b),
             "scenario_c": _run_state(campaign.sim_id_c),
         }
+
+    def delete_campaign(self, campaign_id: str) -> None:
+        """Delete a campaign directory and its three simulation directories."""
+        import shutil
+
+        campaign = self._load(campaign_id)
+        if not campaign:
+            raise ValueError(f"Campaign not found: {campaign_id}")
+
+        # Remove each simulation's data directory
+        sim_data_dir = os.path.join(os.path.dirname(__file__), "../../uploads/simulations")
+        for sim_id in (campaign.sim_id_a, campaign.sim_id_b, campaign.sim_id_c):
+            if sim_id:
+                sim_dir = os.path.join(sim_data_dir, sim_id)
+                if os.path.isdir(sim_dir):
+                    shutil.rmtree(sim_dir, ignore_errors=True)
+
+        # Remove the campaign directory
+        campaign_dir = self._campaign_dir(campaign_id)
+        if os.path.isdir(campaign_dir):
+            shutil.rmtree(campaign_dir, ignore_errors=True)
+
+        logger.info("Deleted campaign %s and its simulations", campaign_id)
 
     def list_campaigns(self) -> List[Dict[str, Any]]:
         """List all campaigns."""
