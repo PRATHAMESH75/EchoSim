@@ -618,6 +618,31 @@ ARCHETYPE_DEFINITIONS = {
 
 # ── Helper Functions ──────────────────────────────────────────────────────────
 
+def _distribute_population(total_agents: int, archetype_keys: List[str]) -> Dict[str, int]:
+    """Split a population across archetypes by ``population_pct``.
+
+    Uses the largest-remainder method so the counts sum to exactly
+    ``total_agents`` — never overshooting or producing negative counts — even
+    when the requested population is smaller than the number of archetypes.
+    """
+    if total_agents <= 0:
+        return {key: 0 for key in archetype_keys}
+
+    weights = [max(0.0, ARCHETYPE_DEFINITIONS[key]["population_pct"]) for key in archetype_keys]
+    weight_sum = sum(weights) or float(len(archetype_keys))
+
+    raw = [total_agents * w / weight_sum for w in weights]
+    counts = [int(value) for value in raw]  # floor (all values are non-negative)
+
+    # Hand the leftover units to the largest fractional remainders.
+    leftover = total_agents - sum(counts)
+    order = sorted(range(len(archetype_keys)), key=lambda i: raw[i] - counts[i], reverse=True)
+    for offset in range(leftover):
+        counts[order[offset % len(order)]] += 1
+
+    return {key: count for key, count in zip(archetype_keys, counts)}
+
+
 def expand_archetypes(
     total_agents: int,
     product_name: str = "the product",
@@ -639,19 +664,9 @@ def expand_archetypes(
     agent_id = 0
     archetype_map: List[Dict[str, Any]] = []
 
-    # Compute per-archetype counts
-    counts: Dict[str, int] = {}
-    remaining = total_agents
+    # Compute per-archetype counts that sum to exactly total_agents.
     archetype_keys = list(ARCHETYPE_DEFINITIONS.keys())
-
-    for i, key in enumerate(archetype_keys):
-        definition = ARCHETYPE_DEFINITIONS[key]
-        if i == len(archetype_keys) - 1:
-            counts[key] = remaining
-        else:
-            n = max(1, round(total_agents * definition["population_pct"]))
-            counts[key] = n
-            remaining -= n
+    counts = _distribute_population(total_agents, archetype_keys)
 
     today = datetime.now().strftime("%Y-%m-%d")
     name_counter: Dict[str, int] = {k: 0 for k in archetype_keys}
