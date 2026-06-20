@@ -435,7 +435,7 @@ class ZepToolsService:
     def llm(self) -> LLMClient:
         """Lazily initialize the LLM client"""
         if self._llm_client is None:
-            self._llm_client = LLMClient()
+            self._llm_client = LLMClient.for_task('tools')
         return self._llm_client
 
     def _call_with_retry(self, func, operation_name: str, max_retries: int = None):
