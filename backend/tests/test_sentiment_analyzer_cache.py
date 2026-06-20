@@ -38,7 +38,8 @@ def test_sentiment_analysis_cache_hits_and_invalidates(monkeypatch, tmp_path, te
 
     def fake_classify(self, posts):
         classify_calls['count'] += 1
-        return [0.6 for _ in posts], [['features'] for _ in posts]
+        # _classify_batch returns (scores, topics, success)
+        return [0.6 for _ in posts], [['features'] for _ in posts], True
 
     monkeypatch.setattr(SentimentAnalyzer, '_classify_batch', fake_classify)
     monkeypatch.setattr(SentimentAnalyzer, '_extract_top_objections', lambda self, posts: [])
