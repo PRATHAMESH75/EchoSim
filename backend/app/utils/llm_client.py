@@ -3,6 +3,7 @@ LLM client wrapper
 Unified calls using the OpenAI format
 """
 
+import time
 from typing import Optional, Dict, Any, List, Iterable
 from openai import OpenAI
 
@@ -12,9 +13,33 @@ from .llm_sanitizer import sanitize_content, parse_json
 
 logger = get_logger('mirofish.llm_client')
 
+# Provider errors worth retrying: rate limits (429), timeouts, connection
+# blips, and 5xx. Imported defensively so the module still loads if the openai
+# SDK surface changes.
+try:
+    from openai import (
+        RateLimitError,
+        APITimeoutError,
+        APIConnectionError,
+        InternalServerError,
+    )
+    _TRANSIENT_LLM_ERRORS = (
+        RateLimitError, APITimeoutError, APIConnectionError, InternalServerError,
+    )
+except ImportError:  # pragma: no cover - depends on openai version
+    _TRANSIENT_LLM_ERRORS = ()
+
+
+class LLMError(RuntimeError):
+    """Uniform, user-facing failure surface for outbound LLM calls.
+
+    Raised after retries (and fallback, if configured) are exhausted, so callers
+    handle one predictable exception instead of provider-specific SDK errors.
+    """
+
 
 class LLMClient:
-    """LLM client with optional per-task model and backup-model fallback."""
+    """LLM client with per-task model, backup-model fallback, and retries."""
 
     def __init__(
         self,
@@ -34,7 +59,8 @@ class LLMClient:
 
         self.client = OpenAI(
             api_key=self.api_key,
-            base_url=self.base_url
+            base_url=self.base_url,
+            timeout=Config.LLM_TIMEOUT,
         )
 
         # Optional backup model engaged only when a primary call raises. It may
@@ -63,25 +89,63 @@ class LLMClient:
         if self._fallback_client is None:
             self._fallback_client = OpenAI(
                 api_key=self.fallback_api_key,
-                base_url=self.fallback_base_url
+                base_url=self.fallback_base_url,
+                timeout=Config.LLM_TIMEOUT,
             )
         return self._fallback_client
 
+    def _request_with_retries(self, client: OpenAI, model: str, kwargs: Dict[str, Any]) -> str:
+        """Call one model, retrying transient provider errors with backoff.
+
+        Non-transient errors (bad request, auth, etc.) raise immediately — no
+        point retrying those.
+        """
+        delay = Config.LLM_RETRY_INITIAL_DELAY
+        for attempt in range(Config.LLM_MAX_RETRIES + 1):
+            try:
+                response = client.chat.completions.create(model=model, **kwargs)
+                return response.choices[0].message.content
+            except _TRANSIENT_LLM_ERRORS as exc:
+                if attempt >= Config.LLM_MAX_RETRIES:
+                    raise
+                wait = min(delay, Config.LLM_RETRY_MAX_DELAY)
+                logger.warning(
+                    "Transient LLM error on '%s' (attempt %d/%d): %s; retrying in %.1fs",
+                    model, attempt + 1, Config.LLM_MAX_RETRIES, exc, wait
+                )
+                time.sleep(wait)
+                delay *= 2
+
     def _create(self, kwargs: Dict[str, Any]) -> str:
-        """Call the primary model, falling back to the backup model on failure."""
+        """Call the primary model (with retries), then the backup, then give up.
+
+        Always raises :class:`LLMError` on terminal failure so callers see one
+        clear, actionable error rather than a provider-specific SDK exception.
+        """
         try:
-            response = self.client.chat.completions.create(model=self.model, **kwargs)
-            return response.choices[0].message.content
+            return self._request_with_retries(self.client, self.model, kwargs)
         except Exception as primary_error:
             fallback = self._get_fallback_client()
             if fallback is None:
-                raise
+                raise LLMError(self._failure_message(self.model, primary_error)) from primary_error
             logger.warning(
                 "Primary model '%s' failed (%s); falling back to '%s'",
                 self.model, primary_error, self.fallback_model
             )
-            response = fallback.chat.completions.create(model=self.fallback_model, **kwargs)
-            return response.choices[0].message.content
+            try:
+                return self._request_with_retries(fallback, self.fallback_model, kwargs)
+            except Exception as fallback_error:
+                raise LLMError(
+                    self._failure_message(self.fallback_model, fallback_error)
+                ) from fallback_error
+
+    @staticmethod
+    def _failure_message(model: str, error: Exception) -> str:
+        return (
+            f"The language model request failed (model '{model}'): {error}. "
+            "Please retry shortly; if this persists, check your LLM provider "
+            "status, API key, and rate limits."
+        )
 
     def chat(
         self,
