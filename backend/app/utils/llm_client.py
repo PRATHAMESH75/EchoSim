@@ -3,12 +3,11 @@ LLM client wrapper
 Unified calls using the OpenAI format
 """
 
-import json
-import re
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Iterable
 from openai import OpenAI
 
 from ..config import Config
+from .llm_sanitizer import sanitize_content, parse_json
 
 
 class LLMClient:
@@ -63,15 +62,16 @@ class LLMClient:
 
         response = self.client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content
-        # Some models (e.g. MiniMax M2.5) include <think> reasoning content in the content field — strip it out
-        content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
-        return content
+        # Route every response through the shared guardrail so reasoning-model
+        # artefacts (e.g. <think> blocks from MiniMax/GLM) never leak downstream.
+        return sanitize_content(content)
 
     def chat_json(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.3,
-        max_tokens: int = 4096
+        max_tokens: int = 4096,
+        required_keys: Optional[Iterable[str]] = None
     ) -> Dict[str, Any]:
         """
         Send a chat request and return JSON
@@ -80,9 +80,14 @@ class LLMClient:
             messages: List of messages
             temperature: Temperature parameter
             max_tokens: Maximum token count
+            required_keys: Optional keys the parsed object must contain
 
         Returns:
             Parsed JSON object
+
+        Raises:
+            ValueError: If the response cannot be parsed/repaired into valid JSON,
+                or is missing a required key. Never leaks a raw JSONDecodeError.
         """
         response = self.chat(
             messages=messages,
@@ -90,13 +95,6 @@ class LLMClient:
             max_tokens=max_tokens,
             response_format={"type": "json_object"}
         )
-        # Strip markdown code block markers
-        cleaned_response = response.strip()
-        cleaned_response = re.sub(r'^```(?:json)?\s*\n?', '', cleaned_response, flags=re.IGNORECASE)
-        cleaned_response = re.sub(r'\n?```\s*$', '', cleaned_response)
-        cleaned_response = cleaned_response.strip()
-
-        try:
-            return json.loads(cleaned_response)
-        except json.JSONDecodeError:
-            raise ValueError(f"Invalid JSON returned by LLM: {cleaned_response}")
+        # Shared layer strips fences, repairs truncated/malformed JSON, and
+        # validates the schema before returning.
+        return parse_json(response, required_keys=required_keys)

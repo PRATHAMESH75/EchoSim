@@ -20,6 +20,7 @@ from openai import OpenAI
 
 from ..config import Config
 from ..utils.logger import get_logger
+from ..utils.llm_sanitizer import sanitize_content, close_truncated_json, repair_json
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
 logger = get_logger('mirofish.simulation_config')
@@ -450,7 +451,9 @@ class SimulationConfigGenerator:
                     # No max_tokens set, allowing the LLM to generate freely
                 )
 
-                content = response.choices[0].message.content
+                # Shared guardrail: strip reasoning blocks / code fences leaked
+                # by reasoning models before attempting to parse.
+                content = sanitize_content(response.choices[0].message.content)
                 finish_reason = response.choices[0].finish_reason
 
                 # Check if truncated
@@ -480,56 +483,13 @@ class SimulationConfigGenerator:
         raise last_error or Exception("LLM call failed")
 
     def _fix_truncated_json(self, content: str) -> str:
-        """Repair truncated JSON"""
-        content = content.strip()
-
-        # Count unclosed brackets
-        open_braces = content.count('{') - content.count('}')
-        open_brackets = content.count('[') - content.count(']')
-
-        # Check for unclosed strings
-        if content and content[-1] not in '",}]':
-            content += '"'
-
-        # Close brackets
-        content += ']' * open_brackets
-        content += '}' * open_braces
-
-        return content
+        """Repair truncated JSON."""
+        return close_truncated_json(content)
 
     def _try_fix_config_json(self, content: str) -> Optional[Dict[str, Any]]:
-        """Attempt to repair configuration JSON"""
-        import re
-
-        # Fix truncated cases
-        content = self._fix_truncated_json(content)
-
-        # Extract JSON portion
-        json_match = re.search(r'\{[\s\S]*\}', content)
-        if json_match:
-            json_str = json_match.group()
-
-            # Remove newlines within strings
-            def fix_string(match):
-                s = match.group(0)
-                s = s.replace('\n', ' ').replace('\r', ' ')
-                s = re.sub(r'\s+', ' ', s)
-                return s
-
-            json_str = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', fix_string, json_str)
-
-            try:
-                return json.loads(json_str)
-            except:
-                # Attempt to remove all control characters
-                json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', json_str)
-                json_str = re.sub(r'\s+', ' ', json_str)
-                try:
-                    return json.loads(json_str)
-                except:
-                    pass
-
-        return None
+        """Attempt to repair configuration JSON via the shared sanitizer."""
+        result = repair_json(content)
+        return result if isinstance(result, dict) else None
 
     def _generate_time_config(self, context: str, num_entities: int) -> Dict[str, Any]:
         """Generate time configuration"""
