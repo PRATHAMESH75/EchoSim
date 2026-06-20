@@ -56,6 +56,14 @@ class Config:
     LLM_FALLBACK_BASE_URL = os.environ.get('LLM_FALLBACK_BASE_URL', '').strip()
     LLM_FALLBACK_API_KEY = os.environ.get('LLM_FALLBACK_API_KEY', '').strip()
 
+    # Disk cache for deterministic LLM generation (profile/config) — issue #20.
+    # Keyed by a hash of model + prompt, so config changes invalidate naturally.
+    LLM_CACHE_ENABLED = _get_bool('LLM_CACHE_ENABLED', True)
+    LLM_CACHE_DIR = os.environ.get(
+        'LLM_CACHE_DIR', os.path.join(os.path.dirname(__file__), '../uploads/llm_cache')
+    )
+    LLM_CACHE_TTL = int(os.environ.get('LLM_CACHE_TTL', '0'))  # seconds; 0 = no expiry
+
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
 
     APP_API_KEY = os.environ.get('APP_API_KEY', '').strip()
