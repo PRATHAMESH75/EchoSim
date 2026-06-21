@@ -3,8 +3,8 @@ Campaign Manager for Product Sentiment Simulator
 
 Orchestrates three parallel simulation scenarios for a single product:
   - Scenario A: Baseline launch (no disruptions)
-  - Scenario B: Competitive pressure injected at round 7
-  - Scenario C: Crisis stress test injected at round 14
+  - Scenario B: Competitive pressure injected at a configurable round (default 7)
+  - Scenario C: Crisis stress test injected at a configurable round (default 14)
 
 Uses existing SimulationManager + SimulationRunner infrastructure.
 """
@@ -72,6 +72,29 @@ DEFAULT_MAX_ROUNDS = Config.SENTIMENT_DEFAULT_MAX_ROUNDS
 SCENARIO_B_INJECT_ROUND = Config.SENTIMENT_SCENARIO_B_INJECT_ROUND
 SCENARIO_C_INJECT_ROUND = Config.SENTIMENT_SCENARIO_C_INJECT_ROUND
 
+# Upper sanity bound for a configurable injection round. The effective ceiling
+# is the campaign's max_rounds (set at start); an injection scheduled beyond the
+# run length simply never fires. This bound just rejects nonsense values early.
+MAX_INJECT_ROUND = 1000
+
+
+def validate_inject_round(value: Any, label: str = "inject_round") -> int:
+    """Coerce ``value`` to an event-injection round and range-check it.
+
+    Rounds are 1-indexed; an injection fires once the simulation reaches the
+    configured round. Raises ``ValueError`` (which the API surfaces as a 400) for
+    non-integers or values outside ``[1, MAX_INJECT_ROUND]``.
+    """
+    try:
+        rounds = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{label} must be an integer, got {value!r}")
+    if not 1 <= rounds <= MAX_INJECT_ROUND:
+        raise ValueError(
+            f"{label} must be between 1 and {MAX_INJECT_ROUND}, got {rounds}"
+        )
+    return rounds
+
 
 class CampaignStatus(str, Enum):
     CREATED = "created"
@@ -107,6 +130,11 @@ class CampaignState:
         "security_breach": 34.0, "harsh_review": 33.0, "misleading_comparison": 33.0
     })
 
+    # Round at which each scenario's event is injected. Defaults preserve the
+    # historical 7/14 cadence; configurable per campaign.
+    scenario_b_inject_round: int = SCENARIO_B_INJECT_ROUND
+    scenario_c_inject_round: int = SCENARIO_C_INJECT_ROUND
+
     scenario_b_injected: bool = False
     scenario_c_injected: bool = False
 
@@ -136,8 +164,8 @@ class CampaignState:
             "crisis_event_type": self.crisis_event_type,
             "competitive_event_weights": self.competitive_event_weights,
             "crisis_event_weights": self.crisis_event_weights,
-            "scenario_b_inject_round": SCENARIO_B_INJECT_ROUND,
-            "scenario_c_inject_round": SCENARIO_C_INJECT_ROUND,
+            "scenario_b_inject_round": self.scenario_b_inject_round,
+            "scenario_c_inject_round": self.scenario_c_inject_round,
             "scenario_b_injected": self.scenario_b_injected,
             "scenario_c_injected": self.scenario_c_injected,
             "total_agents": self.total_agents,
@@ -205,6 +233,8 @@ class CampaignManager:
             crisis_event_weights=d.get("crisis_event_weights", {
                 "security_breach": 34.0, "harsh_review": 33.0, "misleading_comparison": 33.0
             }),
+            scenario_b_inject_round=d.get("scenario_b_inject_round", SCENARIO_B_INJECT_ROUND),
+            scenario_c_inject_round=d.get("scenario_c_inject_round", SCENARIO_C_INJECT_ROUND),
             scenario_b_injected=d.get("scenario_b_injected", False),
             scenario_c_injected=d.get("scenario_c_injected", False),
             total_agents=d.get("total_agents", DEFAULT_TOTAL_AGENTS),
@@ -229,13 +259,28 @@ class CampaignManager:
         competitive_event_weights: Optional[Dict[str, float]] = None,
         crisis_event_weights: Optional[Dict[str, float]] = None,
         total_agents: int = DEFAULT_TOTAL_AGENTS,
+        scenario_b_inject_round: Optional[int] = None,
+        scenario_c_inject_round: Optional[int] = None,
         enable_twitter: bool = True,
         enable_reddit: bool = True,
     ) -> CampaignState:
         """
         Create a new campaign and provision three SimulationManager simulations.
         Returns the campaign state with sim IDs assigned.
+
+        ``scenario_b_inject_round`` / ``scenario_c_inject_round`` control when the
+        competitive / crisis events fire. They default to the configured 7 / 14
+        cadence and are range-checked (``ValueError`` on invalid input).
         """
+        b_inject_round = (
+            SCENARIO_B_INJECT_ROUND if scenario_b_inject_round is None
+            else validate_inject_round(scenario_b_inject_round, "scenario_b_inject_round")
+        )
+        c_inject_round = (
+            SCENARIO_C_INJECT_ROUND if scenario_c_inject_round is None
+            else validate_inject_round(scenario_c_inject_round, "scenario_c_inject_round")
+        )
+
         campaign_id = f"camp_{uuid.uuid4().hex[:12]}"
 
         # Create three simulations
@@ -270,6 +315,8 @@ class CampaignManager:
                 "security_breach": 34.0, "harsh_review": 33.0, "misleading_comparison": 33.0
             },
             total_agents=total_agents,
+            scenario_b_inject_round=b_inject_round,
+            scenario_c_inject_round=c_inject_round,
         )
         self._save(campaign)
         logger.info(
@@ -924,8 +971,8 @@ class CampaignManager:
 
         scenarios = [
             ("A", campaign.sim_id_a, None, None),
-            ("B", campaign.sim_id_b, SCENARIO_B_INJECT_ROUND, "b"),
-            ("C", campaign.sim_id_c, SCENARIO_C_INJECT_ROUND, "c"),
+            ("B", campaign.sim_id_b, campaign.scenario_b_inject_round, "b"),
+            ("C", campaign.sim_id_c, campaign.scenario_c_inject_round, "c"),
         ]
 
         results = {}

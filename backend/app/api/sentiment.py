@@ -92,6 +92,8 @@ def create_campaign():
         competitive_event_type: str (optional, default 'price_drop')
         crisis_event_type: str (optional, default 'security_breach')
         total_agents: int (optional, default 50)
+        scenario_b_inject_round: int (optional, default 7)
+        scenario_c_inject_round: int (optional, default 14)
         enable_twitter: bool (optional, default true)
         enable_reddit: bool (optional, default true)
     """
@@ -122,12 +124,16 @@ def create_campaign():
             competitive_event_weights=competitive_event_weights,
             crisis_event_weights=crisis_event_weights,
             total_agents=int(body.get("total_agents", 50)),
+            scenario_b_inject_round=body.get("scenario_b_inject_round"),
+            scenario_c_inject_round=body.get("scenario_c_inject_round"),
             enable_twitter=bool(body.get("enable_twitter", True)),
             enable_reddit=bool(body.get("enable_reddit", True)),
         )
 
         return jsonify({"success": True, "campaign": campaign.to_dict()})
 
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
         logger.error(f"Create campaign error: {traceback.format_exc()}")
         return jsonify({"success": False, "error": str(e)}), 500
