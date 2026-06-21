@@ -22,6 +22,7 @@ from zep_cloud.client import Zep
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.llm_sanitizer import sanitize_content, close_truncated_json, repair_json
+from ..utils.llm_cache import LLMResponseCache
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
 logger = get_logger('mirofish.oasis_profile')
@@ -200,6 +201,9 @@ class OasisProfileGenerator:
             api_key=self.api_key,
             base_url=self.base_url
         )
+
+        # Cache deterministic persona generations across re-runs (issue #20).
+        self._cache = LLMResponseCache('profile')
 
         # Zep client for retrieving enriched context
         self.zep_api_key = zep_api_key or Config.ZEP_API_KEY
@@ -524,6 +528,15 @@ class OasisProfileGenerator:
                 entity_name, entity_type, entity_summary, entity_attributes, context
             )
 
+        system_prompt = self._get_system_prompt(is_individual)
+
+        # Return a cached persona for an identical request (issue #20). Keyed by
+        # model + prompts, so any prompt/model change is a natural cache miss.
+        cache_key = {"model": self.model_name, "system": system_prompt, "prompt": prompt}
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         # Attempt generation multiple times until success or max retries reached
         max_attempts = 3
         last_error = None
@@ -533,7 +546,7 @@ class OasisProfileGenerator:
                 response = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=[
-                        {"role": "system", "content": self._get_system_prompt(is_individual)},
+                        {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt}
                     ],
                     response_format={"type": "json_object"},
@@ -561,6 +574,7 @@ class OasisProfileGenerator:
                     if "persona" not in result or not result["persona"]:
                         result["persona"] = entity_summary or f"{entity_name}是一个{entity_type}。"
 
+                    self._cache.set(cache_key, result)
                     return result
 
                 except json.JSONDecodeError as je:
@@ -570,6 +584,7 @@ class OasisProfileGenerator:
                     result = self._try_fix_json(content, entity_name, entity_type, entity_summary)
                     if result.get("_fixed"):
                         del result["_fixed"]
+                        self._cache.set(cache_key, result)
                         return result
 
                     last_error = je

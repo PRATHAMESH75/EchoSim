@@ -21,6 +21,7 @@ from openai import OpenAI
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.llm_sanitizer import sanitize_content, close_truncated_json, repair_json
+from ..utils.llm_cache import LLMResponseCache
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
 logger = get_logger('mirofish.simulation_config')
@@ -240,6 +241,9 @@ class SimulationConfigGenerator:
             base_url=self.base_url
         )
 
+        # Cache deterministic config sub-generations across re-runs (issue #20).
+        self._cache = LLMResponseCache('config')
+
     def generate_config(
         self,
         simulation_id: str,
@@ -435,6 +439,12 @@ class SimulationConfigGenerator:
         """LLM call with retry, including JSON repair logic"""
         import re
 
+        # Serve an identical config sub-generation from cache (issue #20).
+        cache_key = {"model": self.model_name, "system": system_prompt, "prompt": prompt}
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         max_attempts = 3
         last_error = None
 
@@ -463,13 +473,16 @@ class SimulationConfigGenerator:
 
                 # Attempt to parse JSON
                 try:
-                    return json.loads(content)
+                    result = json.loads(content)
+                    self._cache.set(cache_key, result)
+                    return result
                 except json.JSONDecodeError as e:
                     logger.warning(f"JSON parsing failed (attempt {attempt+1}): {str(e)[:80]}")
 
                     # Attempt to repair JSON
                     fixed = self._try_fix_config_json(content)
                     if fixed:
+                        self._cache.set(cache_key, fixed)
                         return fixed
 
                     last_error = e
