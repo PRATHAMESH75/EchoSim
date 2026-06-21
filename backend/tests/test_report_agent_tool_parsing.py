@@ -42,6 +42,39 @@ def test_parse_xml_tool_call(agent):
     assert calls == [{"name": "quick_search"}]
 
 
+def test_parse_xml_tool_call_with_nested_parameters(agent):
+    # Guard: a non-empty nested `parameters` object must survive. (This already
+    # worked -- the </tool_call> anchor backtracks the old lazy regex to the
+    # outer brace -- kept so the balanced-extraction rewrite doesn't regress it.)
+    response = '<tool_call>{"name": "insight_forge", "parameters": {"query": "pricing"}}</tool_call>'
+    calls = agent._parse_tool_calls(response)
+    assert calls == [{"name": "insight_forge", "parameters": {"query": "pricing"}}]
+
+
+def test_parse_xml_tool_call_with_leading_text_in_tag(agent):
+    # Model prefixes the JSON with prose inside the tag. The old
+    # `<tool_call>\s*(\{...\})` regex required the object to start right after the
+    # tag and dropped this; balanced extraction scans past the prose.
+    response = '<tool_call>\nHere you go: {"name": "quick_search", "parameters": {"q": "x"}}</tool_call>'
+    calls = agent._parse_tool_calls(response)
+    assert calls == [{"name": "quick_search", "parameters": {"q": "x"}}]
+
+
+def test_parse_xml_tool_call_with_trailing_text_in_tag(agent):
+    # A trailing note after the JSON inside the tag. The old regex required the
+    # object to end right before </tool_call> and dropped this entirely.
+    response = '<tool_call>{"name": "insight_forge", "parameters": {"query": "p"}}\nNote: done</tool_call>'
+    calls = agent._parse_tool_calls(response)
+    assert calls == [{"name": "insight_forge", "parameters": {"query": "p"}}]
+
+
+def test_parse_xml_tool_call_with_fenced_json_in_tag(agent):
+    # Some models wrap the call in a ```json fence inside the tag.
+    response = '<tool_call>```json\n{"name": "quick_search", "parameters": {"q": 1}}\n```</tool_call>'
+    calls = agent._parse_tool_calls(response)
+    assert calls == [{"name": "quick_search", "parameters": {"q": 1}}]
+
+
 def test_parse_bare_json_with_nested_parameters(agent):
     response = '{"name": "insight_forge", "parameters": {"query": "pricing"}}'
     calls = agent._parse_tool_calls(response)
