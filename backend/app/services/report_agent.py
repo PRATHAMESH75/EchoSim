@@ -20,6 +20,7 @@ from enum import Enum
 
 from ..config import Config
 from ..utils.llm_client import LLMClient
+from ..utils.llm_sanitizer import extract_json_block
 from ..utils.logger import get_logger
 from .zep_tools import (
     ZepToolsService, 
@@ -1080,10 +1081,16 @@ class ReportAgent:
         tool_calls = []
 
         # Format 1: XML-style (standard format)
-        xml_pattern = r'<tool_call>\s*(\{.*?\})\s*</tool_call>'
+        # Capture the full <tool_call> body, then pull the balanced {...} object
+        # out of it. A lazy `\{.*?\}` would stop at the first '}', dropping any
+        # tool call whose `parameters` is a non-empty nested object.
+        xml_pattern = r'<tool_call>(.*?)</tool_call>'
         for match in re.finditer(xml_pattern, response, re.DOTALL):
+            json_str = extract_json_block(match.group(1))
+            if not json_str:
+                continue
             try:
-                call_data = json.loads(match.group(1))
+                call_data = json.loads(json_str)
                 tool_calls.append(call_data)
             except json.JSONDecodeError:
                 pass
