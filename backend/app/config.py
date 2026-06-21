@@ -64,6 +64,14 @@ class Config:
     )
     LLM_CACHE_TTL = int(os.environ.get('LLM_CACHE_TTL', '0'))  # seconds; 0 = no expiry
 
+    # Resilience for outbound LLM calls (issue #28): retry transient provider
+    # errors (429 / timeout / connection / 5xx) with exponential backoff, and
+    # bound every request with a timeout.
+    LLM_MAX_RETRIES = int(os.environ.get('LLM_MAX_RETRIES', '3'))
+    LLM_RETRY_INITIAL_DELAY = float(os.environ.get('LLM_RETRY_INITIAL_DELAY', '1.0'))
+    LLM_RETRY_MAX_DELAY = float(os.environ.get('LLM_RETRY_MAX_DELAY', '30.0'))
+    LLM_TIMEOUT = float(os.environ.get('LLM_TIMEOUT', '60.0'))
+
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
 
     APP_API_KEY = os.environ.get('APP_API_KEY', '').strip()
