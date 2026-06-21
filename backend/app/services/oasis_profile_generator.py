@@ -21,6 +21,7 @@ from zep_cloud.client import Zep
 
 from ..config import Config
 from ..utils.logger import get_logger
+from ..utils.llm_sanitizer import sanitize_content, close_truncated_json, repair_json
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
 logger = get_logger('mirofish.oasis_profile')
@@ -540,7 +541,9 @@ class OasisProfileGenerator:
                     # No max_tokens set — let the LLM generate freely
                 )
 
-                content = response.choices[0].message.content
+                # Shared guardrail: strip reasoning blocks / code fences that
+                # reasoning models leak into the content field before parsing.
+                content = sanitize_content(response.choices[0].message.content)
 
                 # Check if truncated (finish_reason is not 'stop')
                 finish_reason = response.choices[0].finish_reason
@@ -583,73 +586,22 @@ class OasisProfileGenerator:
         )
 
     def _fix_truncated_json(self, content: str) -> str:
-        """Repair truncated JSON (output cut off by max_tokens limit)"""
-        import re
-
-        # If JSON was truncated, attempt to close it
-        content = content.strip()
-
-        # Count unclosed brackets
-        open_braces = content.count('{') - content.count('}')
-        open_brackets = content.count('[') - content.count(']')
-
-        # Check for unclosed strings
-        # Simple check: if the last character is not a quote, comma, or closing bracket,
-        # the string may have been truncated
-        if content and content[-1] not in '",}]':
-            # Attempt to close the string
-            content += '"'
-
-        # Close brackets
-        content += ']' * open_brackets
-        content += '}' * open_braces
-
-        return content
+        """Repair truncated JSON (output cut off by max_tokens limit)."""
+        return close_truncated_json(content)
 
     def _try_fix_json(self, content: str, entity_name: str, entity_type: str, entity_summary: str = "") -> Dict[str, Any]:
-        """Attempt to repair corrupted JSON"""
+        """Attempt to repair corrupted JSON, falling back to partial extraction."""
         import re
 
-        # 1. First attempt to repair truncated cases
-        content = self._fix_truncated_json(content)
+        # Generic repair (truncation close, block extraction, newline/control fixes)
+        # lives in the shared sanitizer so every service shares one implementation.
+        result = repair_json(content)
+        if isinstance(result, dict):
+            result["_fixed"] = True
+            return result
 
-        # 2. Attempt to extract the JSON portion
-        json_match = re.search(r'\{[\s\S]*\}', content)
-        if json_match:
-            json_str = json_match.group()
-
-            # 3. Handle newline characters inside strings
-            # Find all string values and replace embedded newlines
-            def fix_string_newlines(match):
-                s = match.group(0)
-                # Replace actual newlines inside strings with spaces
-                s = s.replace('\n', ' ').replace('\r', ' ')
-                # Replace excessive whitespace
-                s = re.sub(r'\s+', ' ', s)
-                return s
-
-            # Match JSON string values
-            json_str = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', fix_string_newlines, json_str)
-
-            # 4. Attempt to parse
-            try:
-                result = json.loads(json_str)
-                result["_fixed"] = True
-                return result
-            except json.JSONDecodeError as e:
-                # 5. If still failing, attempt more aggressive repair
-                try:
-                    # Remove all control characters
-                    json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', json_str)
-                    # Replace all consecutive whitespace
-                    json_str = re.sub(r'\s+', ' ', json_str)
-                    result = json.loads(json_str)
-                    result["_fixed"] = True
-                    return result
-                except:
-                    pass
-
-        # 6. Attempt to extract partial information from the content
+        # Domain-specific fallback: salvage bio/persona from the raw text.
+        content = close_truncated_json(content)
         bio_match = re.search(r'"bio"\s*:\s*"([^"]*)"', content)
         persona_match = re.search(r'"persona"\s*:\s*"([^"]*)', content)  # May be truncated
 
