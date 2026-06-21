@@ -7,17 +7,23 @@ from typing import Optional, Dict, Any, List, Iterable
 from openai import OpenAI
 
 from ..config import Config
+from .logger import get_logger
 from .llm_sanitizer import sanitize_content, parse_json
+
+logger = get_logger('mirofish.llm_client')
 
 
 class LLMClient:
-    """LLM client"""
+    """LLM client with optional per-task model and backup-model fallback."""
 
     def __init__(
         self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        fallback_model: Optional[str] = None,
+        fallback_base_url: Optional[str] = None,
+        fallback_api_key: Optional[str] = None
     ):
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
@@ -30,6 +36,52 @@ class LLMClient:
             api_key=self.api_key,
             base_url=self.base_url
         )
+
+        # Optional backup model engaged only when a primary call raises. It may
+        # target a different provider, so it keeps its own URL/key (defaulting
+        # to the primary connection). The client is built lazily on first use.
+        self.fallback_model = fallback_model
+        self.fallback_base_url = fallback_base_url or self.base_url
+        self.fallback_api_key = fallback_api_key or self.api_key
+        self._fallback_client: Optional[OpenAI] = None
+
+    @classmethod
+    def for_task(cls, task: Optional[str] = None, **overrides) -> "LLMClient":
+        """Build a client using the per-task model + fallback from Config.
+
+        Keyword overrides (e.g. ``model=...``) take precedence over the resolved
+        settings when not ``None``, so callers can still force a specific model.
+        """
+        settings = Config.llm_settings(task)
+        settings.update({k: v for k, v in overrides.items() if v is not None})
+        return cls(**settings)
+
+    def _get_fallback_client(self) -> Optional[OpenAI]:
+        """Lazily build the backup client, or None when no fallback is configured."""
+        if not self.fallback_model or self.fallback_model == self.model:
+            return None
+        if self._fallback_client is None:
+            self._fallback_client = OpenAI(
+                api_key=self.fallback_api_key,
+                base_url=self.fallback_base_url
+            )
+        return self._fallback_client
+
+    def _create(self, kwargs: Dict[str, Any]) -> str:
+        """Call the primary model, falling back to the backup model on failure."""
+        try:
+            response = self.client.chat.completions.create(model=self.model, **kwargs)
+            return response.choices[0].message.content
+        except Exception as primary_error:
+            fallback = self._get_fallback_client()
+            if fallback is None:
+                raise
+            logger.warning(
+                "Primary model '%s' failed (%s); falling back to '%s'",
+                self.model, primary_error, self.fallback_model
+            )
+            response = fallback.chat.completions.create(model=self.fallback_model, **kwargs)
+            return response.choices[0].message.content
 
     def chat(
         self,
@@ -51,7 +103,6 @@ class LLMClient:
             Model response text
         """
         kwargs = {
-            "model": self.model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
@@ -60,10 +111,10 @@ class LLMClient:
         if response_format:
             kwargs["response_format"] = response_format
 
-        response = self.client.chat.completions.create(**kwargs)
-        content = response.choices[0].message.content
-        # Route every response through the shared guardrail so reasoning-model
-        # artefacts (e.g. <think> blocks from MiniMax/GLM) never leak downstream.
+        # _create selects the model (per-task) and falls back to the backup
+        # model on failure. Route every response through the shared guardrail so
+        # reasoning-model artefacts (e.g. <think> blocks) never leak downstream.
+        content = self._create(kwargs)
         return sanitize_content(content)
 
     def chat_json(

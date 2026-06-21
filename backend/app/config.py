@@ -1,7 +1,7 @@
 """Application configuration loaded from the project root `.env` file."""
 
 import os
-from typing import List
+from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 
@@ -37,6 +37,24 @@ class Config:
     LLM_API_KEY = os.environ.get('LLM_API_KEY')
     LLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'https://api.openai.com/v1')
     LLM_MODEL_NAME = os.environ.get('LLM_MODEL_NAME', 'gpt-4o-mini')
+
+    # Per-task model overrides (issue #15). Each agent task may pick a model with
+    # different cost/quality trade-offs via LLM_MODEL_<TASK>; anything unset falls
+    # back to LLM_MODEL_NAME. Recognised task keys are the dict keys below.
+    LLM_TASK_MODELS: Dict[str, Optional[str]] = {
+        'profile': os.environ.get('LLM_MODEL_PROFILE'),
+        'config': os.environ.get('LLM_MODEL_CONFIG'),
+        'report': os.environ.get('LLM_MODEL_REPORT'),
+        'ontology': os.environ.get('LLM_MODEL_ONTOLOGY'),
+        'sentiment': os.environ.get('LLM_MODEL_SENTIMENT'),
+        'tools': os.environ.get('LLM_MODEL_TOOLS'),
+    }
+
+    # Optional backup model used when a primary LLM call fails. May live on a
+    # different provider (separate base URL / key); both default to the primary.
+    LLM_FALLBACK_MODEL = os.environ.get('LLM_FALLBACK_MODEL', '').strip()
+    LLM_FALLBACK_BASE_URL = os.environ.get('LLM_FALLBACK_BASE_URL', '').strip()
+    LLM_FALLBACK_API_KEY = os.environ.get('LLM_FALLBACK_API_KEY', '').strip()
 
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
 
@@ -81,6 +99,33 @@ class Config:
     SERVE_FRONTEND = _get_bool('SERVE_FRONTEND', True)
     FRONTEND_DIST_DIR = os.path.join(os.path.dirname(__file__), '../../frontend/dist')
     TASK_DATA_DIR = os.path.join(os.path.dirname(__file__), '../uploads/tasks')
+
+    @classmethod
+    def model_for_task(cls, task: Optional[str] = None) -> str:
+        """Return the model configured for an agent task, or the global default."""
+        if task:
+            override = cls.LLM_TASK_MODELS.get(task)
+            if override:
+                return override
+        return cls.LLM_MODEL_NAME
+
+    @classmethod
+    def llm_settings(cls, task: Optional[str] = None) -> Dict[str, Optional[str]]:
+        """Resolve primary + fallback LLM connection settings for an agent task.
+
+        The returned dict is directly consumable as ``LLMClient(**settings)``.
+        Fallback fields are ``None`` unless ``LLM_FALLBACK_MODEL`` is set, and a
+        fallback may target a different provider (its own base URL / API key).
+        """
+        fallback_model = cls.LLM_FALLBACK_MODEL or None
+        return {
+            'api_key': cls.LLM_API_KEY,
+            'base_url': cls.LLM_BASE_URL,
+            'model': cls.model_for_task(task),
+            'fallback_model': fallback_model,
+            'fallback_base_url': (cls.LLM_FALLBACK_BASE_URL or cls.LLM_BASE_URL) if fallback_model else None,
+            'fallback_api_key': (cls.LLM_FALLBACK_API_KEY or cls.LLM_API_KEY) if fallback_model else None,
+        }
 
     @classmethod
     def validate(cls):

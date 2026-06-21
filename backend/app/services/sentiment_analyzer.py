@@ -123,7 +123,7 @@ class SentimentAnalyzer:
             api_key=Config.LLM_API_KEY,
             base_url=Config.LLM_BASE_URL,
         )
-        self._model = Config.LLM_MODEL_NAME
+        self._model = Config.model_for_task('sentiment')
         self._archetype_map: Optional[Dict[int, str]] = None
         self._advocate_threshold = advocate_threshold
         self._detractor_threshold = detractor_threshold
