@@ -234,15 +234,39 @@ class ParallelIPCHandler:
         self.twitter_agent_graph = twitter_agent_graph
         self.reddit_env = reddit_env
         self.reddit_agent_graph = reddit_agent_graph
-        
+
+        # Per-platform locks. These serialize an interview-triggered env.step()
+        # against the round loop's own env.step() on the same env, since OASIS
+        # environments aren't safe to step() concurrently from two coroutines.
+        # Set via register_twitter()/register_reddit() once each platform's env
+        # is constructed (round loop and interview dispatcher share the lock).
+        self.twitter_lock: Optional[asyncio.Lock] = None
+        self.reddit_lock: Optional[asyncio.Lock] = None
+
         self.commands_dir = os.path.join(simulation_dir, IPC_COMMANDS_DIR)
         self.responses_dir = os.path.join(simulation_dir, IPC_RESPONSES_DIR)
         self.status_file = os.path.join(simulation_dir, ENV_STATUS_FILE)
-        
+
         # 确保目录存在
         os.makedirs(self.commands_dir, exist_ok=True)
         os.makedirs(self.responses_dir, exist_ok=True)
-    
+
+    def register_twitter(self, env, agent_graph, lock: asyncio.Lock):
+        """Attach the Twitter env/graph once constructed, so mid-run interview
+        commands can reach it while the round loop is still going."""
+        self.twitter_env = env
+        self.twitter_agent_graph = agent_graph
+        self.twitter_lock = lock
+        self.update_status("alive")
+
+    def register_reddit(self, env, agent_graph, lock: asyncio.Lock):
+        """Attach the Reddit env/graph once constructed, so mid-run interview
+        commands can reach it while the round loop is still going."""
+        self.reddit_env = env
+        self.reddit_agent_graph = agent_graph
+        self.reddit_lock = lock
+        self.update_status("alive")
+
     def update_status(self, status: str):
         """更新环境状态"""
         with open(self.status_file, 'w', encoding='utf-8') as f:
@@ -322,10 +346,12 @@ class ParallelIPCHandler:
             包含结果的字典，或包含error的字典
         """
         env, agent_graph, actual_platform = self._get_env_and_graph(platform)
-        
+
         if not env or not agent_graph:
             return {"platform": platform, "error": f"{platform}平台不可用"}
-        
+
+        lock = self.twitter_lock if actual_platform == "twitter" else self.reddit_lock
+
         try:
             agent = agent_graph.get_agent(agent_id)
             interview_action = ManualAction(
@@ -333,8 +359,12 @@ class ParallelIPCHandler:
                 action_args={"prompt": prompt}
             )
             actions = {agent: interview_action}
-            await env.step(actions)
-            
+            if lock is not None:
+                async with lock:
+                    await env.step(actions)
+            else:
+                await env.step(actions)
+
             result = self._get_interview_result(agent_id, actual_platform)
             result["platform"] = actual_platform
             return result
@@ -466,8 +496,12 @@ class ParallelIPCHandler:
                         print(f"  警告: 无法获取Twitter Agent {agent_id}: {e}")
                 
                 if twitter_actions:
-                    await self.twitter_env.step(twitter_actions)
-                    
+                    if self.twitter_lock is not None:
+                        async with self.twitter_lock:
+                            await self.twitter_env.step(twitter_actions)
+                    else:
+                        await self.twitter_env.step(twitter_actions)
+
                     for interview in twitter_interviews:
                         agent_id = interview.get("agent_id")
                         result = self._get_interview_result(agent_id, "twitter")
@@ -493,8 +527,12 @@ class ParallelIPCHandler:
                         print(f"  警告: 无法获取Reddit Agent {agent_id}: {e}")
                 
                 if reddit_actions:
-                    await self.reddit_env.step(reddit_actions)
-                    
+                    if self.reddit_lock is not None:
+                        async with self.reddit_lock:
+                            await self.reddit_env.step(reddit_actions)
+                    else:
+                        await self.reddit_env.step(reddit_actions)
+
                     for interview in reddit_interviews:
                         agent_id = interview.get("agent_id")
                         result = self._get_interview_result(agent_id, "reddit")
@@ -1099,24 +1137,29 @@ class PlatformSimulation:
 
 
 async def run_twitter_simulation(
-    config: Dict[str, Any], 
+    config: Dict[str, Any],
     simulation_dir: str,
     action_logger: Optional[PlatformActionLogger] = None,
     main_logger: Optional[SimulationLogManager] = None,
-    max_rounds: Optional[int] = None
+    max_rounds: Optional[int] = None,
+    ipc_handler: Optional["ParallelIPCHandler"] = None,
 ) -> PlatformSimulation:
     """运行Twitter模拟
-    
+
     Args:
         config: 模拟配置
         simulation_dir: 模拟目录
         action_logger: 动作日志记录器
         main_logger: 主日志管理器
         max_rounds: 最大模拟轮数（可选，用于截断过长的模拟）
-        
+        ipc_handler: 可选的IPC处理器；一旦env就绪就会注册进去，
+            使得Interview命令可以在轮次循环运行期间被处理，而不必等到
+            全部轮次结束
+
     Returns:
         PlatformSimulation: 包含env和agent_graph的结果对象
     """
+    twitter_lock = asyncio.Lock()
     result = PlatformSimulation()
     
     def log_info(msg):
@@ -1161,21 +1204,24 @@ async def run_twitter_simulation(
     
     await result.env.reset()
     log_info("环境已启动")
-    
+
+    if ipc_handler is not None:
+        ipc_handler.register_twitter(result.env, result.agent_graph, twitter_lock)
+
     if action_logger:
         action_logger.log_simulation_start(config)
-    
+
     total_actions = 0
     last_rowid = 0  # 跟踪数据库中最后处理的行号（使用 rowid 避免 created_at 格式差异）
-    
+
     # 执行初始事件
     event_config = config.get("event_config", {})
     initial_posts = event_config.get("initial_posts", [])
-    
+
     # 记录 round 0 开始（初始事件阶段）
     if action_logger:
         action_logger.log_round_start(0, 0)  # round 0, simulated_hour 0
-    
+
     initial_action_count = 0
     if initial_posts:
         initial_actions = {}
@@ -1188,7 +1234,7 @@ async def run_twitter_simulation(
                     action_type=ActionType.CREATE_POST,
                     action_args={"content": content}
                 )
-                
+
                 if action_logger:
                     action_logger.log_action(
                         round_num=0,
@@ -1201,9 +1247,10 @@ async def run_twitter_simulation(
                     initial_action_count += 1
             except Exception:
                 pass
-        
+
         if initial_actions:
-            await result.env.step(initial_actions)
+            async with twitter_lock:
+                await result.env.step(initial_actions)
             log_info(f"已发布 {len(initial_actions)} 条初始帖子")
     
     # 记录 round 0 结束
@@ -1251,13 +1298,14 @@ async def run_twitter_simulation(
             continue
         
         actions = {agent: LLMAction() for _, agent in active_agents}
-        await result.env.step(actions)
-        
+        async with twitter_lock:
+            await result.env.step(actions)
+
         # 从数据库获取实际执行的动作并记录
         actual_actions, last_rowid = fetch_new_actions_from_db(
             db_path, last_rowid, agent_names
         )
-        
+
         round_action_count = 0
         for action_data in actual_actions:
             if action_logger:
@@ -1270,45 +1318,50 @@ async def run_twitter_simulation(
                 )
                 total_actions += 1
                 round_action_count += 1
-        
+
         if action_logger:
             action_logger.log_round_end(round_num + 1, round_action_count)
-        
+
         if (round_num + 1) % 20 == 0:
             progress = (round_num + 1) / total_rounds * 100
             log_info(f"Day {simulated_day}, {simulated_hour:02d}:00 - Round {round_num + 1}/{total_rounds} ({progress:.1f}%)")
-    
+
     # 注意：不关闭环境，保留给Interview使用
-    
+
     if action_logger:
         action_logger.log_simulation_end(total_rounds, total_actions)
-    
+
     result.total_actions = total_actions
     elapsed = (datetime.now() - start_time).total_seconds()
     log_info(f"模拟循环完成! 耗时: {elapsed:.1f}秒, 总动作: {total_actions}")
-    
+
     return result
 
 
 async def run_reddit_simulation(
-    config: Dict[str, Any], 
+    config: Dict[str, Any],
     simulation_dir: str,
     action_logger: Optional[PlatformActionLogger] = None,
     main_logger: Optional[SimulationLogManager] = None,
-    max_rounds: Optional[int] = None
+    max_rounds: Optional[int] = None,
+    ipc_handler: Optional["ParallelIPCHandler"] = None,
 ) -> PlatformSimulation:
     """运行Reddit模拟
-    
+
     Args:
         config: 模拟配置
         simulation_dir: 模拟目录
         action_logger: 动作日志记录器
         main_logger: 主日志管理器
         max_rounds: 最大模拟轮数（可选，用于截断过长的模拟）
-        
+        ipc_handler: 可选的IPC处理器；一旦env就绪就会注册进去，
+            使得Interview命令可以在轮次循环运行期间被处理，而不必等到
+            全部轮次结束
+
     Returns:
         PlatformSimulation: 包含env和agent_graph的结果对象
     """
+    reddit_lock = asyncio.Lock()
     result = PlatformSimulation()
     
     def log_info(msg):
@@ -1352,21 +1405,24 @@ async def run_reddit_simulation(
     
     await result.env.reset()
     log_info("环境已启动")
-    
+
+    if ipc_handler is not None:
+        ipc_handler.register_reddit(result.env, result.agent_graph, reddit_lock)
+
     if action_logger:
         action_logger.log_simulation_start(config)
-    
+
     total_actions = 0
     last_rowid = 0  # 跟踪数据库中最后处理的行号（使用 rowid 避免 created_at 格式差异）
-    
+
     # 执行初始事件
     event_config = config.get("event_config", {})
     initial_posts = event_config.get("initial_posts", [])
-    
+
     # 记录 round 0 开始（初始事件阶段）
     if action_logger:
         action_logger.log_round_start(0, 0)  # round 0, simulated_hour 0
-    
+
     initial_action_count = 0
     if initial_posts:
         initial_actions = {}
@@ -1402,61 +1458,63 @@ async def run_reddit_simulation(
                 pass
         
         if initial_actions:
-            await result.env.step(initial_actions)
+            async with reddit_lock:
+                await result.env.step(initial_actions)
             log_info(f"已发布 {len(initial_actions)} 条初始帖子")
-    
+
     # 记录 round 0 结束
     if action_logger:
         action_logger.log_round_end(0, initial_action_count)
-    
+
     # 主模拟循环
     time_config = config.get("time_config", {})
     total_hours = time_config.get("total_simulation_hours", 72)
     minutes_per_round = time_config.get("minutes_per_round", 30)
     total_rounds = (total_hours * 60) // minutes_per_round
-    
+
     # 如果指定了最大轮数，则截断
     if max_rounds is not None and max_rounds > 0:
         original_rounds = total_rounds
         total_rounds = min(total_rounds, max_rounds)
         if total_rounds < original_rounds:
             log_info(f"轮数已截断: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
-    
+
     start_time = datetime.now()
-    
+
     for round_num in range(total_rounds):
         # 检查是否收到退出信号
         if _shutdown_event and _shutdown_event.is_set():
             if main_logger:
                 main_logger.info(f"收到退出信号，在第 {round_num + 1} 轮停止模拟")
             break
-        
+
         simulated_minutes = round_num * minutes_per_round
         simulated_hour = (simulated_minutes // 60) % 24
         simulated_day = simulated_minutes // (60 * 24) + 1
-        
+
         active_agents = get_active_agents_for_round(
             result.env, config, simulated_hour, round_num
         )
-        
+
         # 无论是否有活跃agent，都记录round开始
         if action_logger:
             action_logger.log_round_start(round_num + 1, simulated_hour)
-        
+
         if not active_agents:
             # 没有活跃agent时也记录round结束（actions_count=0）
             if action_logger:
                 action_logger.log_round_end(round_num + 1, 0)
             continue
-        
+
         actions = {agent: LLMAction() for _, agent in active_agents}
-        await result.env.step(actions)
-        
+        async with reddit_lock:
+            await result.env.step(actions)
+
         # 从数据库获取实际执行的动作并记录
         actual_actions, last_rowid = fetch_new_actions_from_db(
             db_path, last_rowid, agent_names
         )
-        
+
         round_action_count = 0
         for action_data in actual_actions:
             if action_logger:
@@ -1469,16 +1527,16 @@ async def run_reddit_simulation(
                 )
                 total_actions += 1
                 round_action_count += 1
-        
+
         if action_logger:
             action_logger.log_round_end(round_num + 1, round_action_count)
-        
+
         if (round_num + 1) % 20 == 0:
             progress = (round_num + 1) / total_rounds * 100
             log_info(f"Day {simulated_day}, {simulated_hour:02d}:00 - Round {round_num + 1}/{total_rounds} ({progress:.1f}%)")
-    
+
     # 注意：不关闭环境，保留给Interview使用
-    
+
     if action_logger:
         action_logger.log_simulation_end(total_rounds, total_actions)
     
@@ -1571,67 +1629,85 @@ async def main():
     log_manager.info("=" * 60)
     
     start_time = datetime.now()
-    
+
     # 存储两个平台的模拟结果
     twitter_result: Optional[PlatformSimulation] = None
     reddit_result: Optional[PlatformSimulation] = None
-    
+
+    # 如果启用等待命令模式，在轮次循环开始*之前*就创建IPC处理器并启动一个
+    # 独立的调度协程持续轮询命令。这样Interview/close_env命令在模拟运行期间
+    # 就能被处理，而不必等到所有轮次跑完（此前的实现只在跑完之后才服务命令，
+    # 导致运行期间的事件注入永远失败: "environment is not running or has closed"）。
+    # 各平台的env在construct后通过 register_twitter()/register_reddit() 挂载进
+    # 同一个handler；handler和每个平台round loop共享一把锁，避免round loop
+    # 自身的env.step()与interview触发的env.step()在同一个env上并发执行。
+    ipc_handler: Optional[ParallelIPCHandler] = None
+    dispatcher_task: Optional[asyncio.Task] = None
+
+    if wait_for_commands:
+        ipc_handler = ParallelIPCHandler(simulation_dir=simulation_dir)
+        ipc_handler.update_status("alive")
+
+        async def _dispatch_commands():
+            try:
+                while not _shutdown_event.is_set():
+                    should_continue = await ipc_handler.process_commands()
+                    if not should_continue:
+                        break
+                    try:
+                        await asyncio.wait_for(_shutdown_event.wait(), timeout=0.5)
+                        break  # 收到退出信号
+                    except asyncio.TimeoutError:
+                        pass  # 超时继续循环
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print(f"\n命令处理出错: {e}")
+
+        log_manager.info("IPC 命令调度已启动 - 支持在模拟运行期间注入事件 (interview/batch_interview/close_env)")
+        dispatcher_task = asyncio.create_task(_dispatch_commands())
+
     if args.twitter_only:
-        twitter_result = await run_twitter_simulation(config, simulation_dir, twitter_logger, log_manager, args.max_rounds)
+        twitter_result = await run_twitter_simulation(
+            config, simulation_dir, twitter_logger, log_manager, args.max_rounds, ipc_handler=ipc_handler
+        )
     elif args.reddit_only:
-        reddit_result = await run_reddit_simulation(config, simulation_dir, reddit_logger, log_manager, args.max_rounds)
+        reddit_result = await run_reddit_simulation(
+            config, simulation_dir, reddit_logger, log_manager, args.max_rounds, ipc_handler=ipc_handler
+        )
     else:
         # 并行运行（每个平台使用独立的日志记录器）
         results = await asyncio.gather(
-            run_twitter_simulation(config, simulation_dir, twitter_logger, log_manager, args.max_rounds),
-            run_reddit_simulation(config, simulation_dir, reddit_logger, log_manager, args.max_rounds),
+            run_twitter_simulation(
+                config, simulation_dir, twitter_logger, log_manager, args.max_rounds, ipc_handler=ipc_handler
+            ),
+            run_reddit_simulation(
+                config, simulation_dir, reddit_logger, log_manager, args.max_rounds, ipc_handler=ipc_handler
+            ),
         )
         twitter_result, reddit_result = results
-    
+
     total_elapsed = (datetime.now() - start_time).total_seconds()
     log_manager.info("=" * 60)
     log_manager.info(f"模拟循环完成! 总耗时: {total_elapsed:.1f}秒")
-    
-    # 是否进入等待命令模式
-    if wait_for_commands:
+
+    # 轮次循环已经跑完；调度协程从一开始就在运行，此时仍继续等待
+    # Interview/close_env命令，直到收到 close_env 或 shutdown 信号
+    if dispatcher_task is not None:
         log_manager.info("")
         log_manager.info("=" * 60)
         log_manager.info("进入等待命令模式 - 环境保持运行")
         log_manager.info("支持的命令: interview, batch_interview, close_env")
         log_manager.info("=" * 60)
-        
-        # 创建IPC处理器
-        ipc_handler = ParallelIPCHandler(
-            simulation_dir=simulation_dir,
-            twitter_env=twitter_result.env if twitter_result else None,
-            twitter_agent_graph=twitter_result.agent_graph if twitter_result else None,
-            reddit_env=reddit_result.env if reddit_result else None,
-            reddit_agent_graph=reddit_result.agent_graph if reddit_result else None
-        )
-        ipc_handler.update_status("alive")
-        
-        # 等待命令循环（使用全局 _shutdown_event）
+
         try:
-            while not _shutdown_event.is_set():
-                should_continue = await ipc_handler.process_commands()
-                if not should_continue:
-                    break
-                # 使用 wait_for 替代 sleep，这样可以响应 shutdown_event
-                try:
-                    await asyncio.wait_for(_shutdown_event.wait(), timeout=0.5)
-                    break  # 收到退出信号
-                except asyncio.TimeoutError:
-                    pass  # 超时继续循环
-        except KeyboardInterrupt:
-            print("\n收到中断信号")
+            await dispatcher_task
         except asyncio.CancelledError:
-            print("\n任务被取消")
-        except Exception as e:
-            print(f"\n命令处理出错: {e}")
-        
+            pass
+
         log_manager.info("\n关闭环境...")
         ipc_handler.update_status("stopped")
-    
+
     # 关闭环境
     if twitter_result and twitter_result.env:
         await twitter_result.env.close()
