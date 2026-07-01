@@ -324,7 +324,7 @@ class ParallelIPCHandler:
         env, agent_graph, actual_platform = self._get_env_and_graph(platform)
         
         if not env or not agent_graph:
-            return {"platform": platform, "error": f"{platform}平台不可用"}
+            return {"platform": platform, "error": f"{platform} platform is unavailable"}
         
         try:
             agent = agent_graph.get_agent(agent_id)
@@ -373,7 +373,7 @@ class ParallelIPCHandler:
         
         # 未指定平台：同时采访两个平台
         if not self.twitter_env and not self.reddit_env:
-            self.send_response(command_id, "failed", error="没有可用的模拟环境")
+            self.send_response(command_id, "failed", error="No simulation environment is available")
             return False
         
         results = {
@@ -408,7 +408,7 @@ class ParallelIPCHandler:
             print(f"  Interview完成: agent_id={agent_id}, 成功平台数={success_count}/{len(platforms_to_interview)}")
             return True
         else:
-            errors = [f"{p}: {r.get('error', '未知错误')}" for p, r in results["platforms"].items()]
+            errors = [f"{p}: {r.get('error', 'unknown error')}" for p, r in results["platforms"].items()]
             self.send_response(command_id, "failed", error="; ".join(errors))
             print(f"  Interview失败: agent_id={agent_id}, 所有平台都失败")
             return False
@@ -511,7 +511,7 @@ class ParallelIPCHandler:
             print(f"  批量Interview完成: {len(results)} 个Agent")
             return True
         else:
-            self.send_response(command_id, "failed", error="没有成功的采访")
+            self.send_response(command_id, "failed", error="No interviews succeeded")
             return False
     
     def _get_interview_result(self, agent_id: int, platform: str) -> Dict[str, Any]:
@@ -597,7 +597,7 @@ class ParallelIPCHandler:
             return False
         
         else:
-            self.send_response(command_id, "failed", error=f"未知命令类型: {command_type}")
+            self.send_response(command_id, "failed", error=f"Unknown command type: {command_type}")
             return True
 
 
