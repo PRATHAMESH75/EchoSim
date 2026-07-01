@@ -596,11 +596,17 @@ class CampaignManager:
                 prompt=prompt,
                 timeout=timeout,
             )
-            if scenario.lower() == "b":
-                campaign.scenario_b_injected = True
-            else:
-                campaign.scenario_c_injected = True
-            self._save(campaign)
+            # Only mark the scenario as injected if the interview actually
+            # reached agents. `interview_all_agents` doesn't raise when the
+            # environment is unreachable — it returns success=False — so
+            # checking only for exceptions here previously let a silent no-op
+            # be recorded as a successful injection.
+            if result.get("success"):
+                if scenario.lower() == "b":
+                    campaign.scenario_b_injected = True
+                else:
+                    campaign.scenario_c_injected = True
+                self._save(campaign)
             return result
         except Exception as e:
             logger.error(f"Event injection failed for Scenario {scenario}: {e}")
@@ -809,16 +815,27 @@ class CampaignManager:
                 f"Executing staggered injection tier={tier} round={current_round} "
                 f"sim={sim_id}: {prompt[:60]}..."
             )
+            succeeded = False
             try:
-                SimulationRunner.interview_all_agents(
+                result = SimulationRunner.interview_all_agents(
                     simulation_id=sim_id,
                     prompt=prompt,
                     timeout=30.0,
                 )
+                succeeded = bool(result.get("success"))
+                if not succeeded:
+                    logger.warning(
+                        f"Staggered injection tier={tier} reported failure (non-fatal): "
+                        f"{result.get('error')}"
+                    )
             except Exception as e:
                 logger.warning(f"Staggered injection tier={tier} failed (non-fatal): {e}")
 
+            # Mark this tier attempted either way so we don't retry it forever,
+            # but only a *successful* tier counts toward the scenario being
+            # considered "injected".
             inj["done"] = True
+            inj["succeeded"] = succeeded
             executed_any = True
             executed_scenarios.add(inj.get("scenario"))
 
@@ -826,7 +843,8 @@ class CampaignManager:
             for scenario in executed_scenarios:
                 if not scenario:
                     continue
-                if all(i["done"] for i in campaign.pending_injections if i.get("scenario") == scenario):
+                scenario_injections = [i for i in campaign.pending_injections if i.get("scenario") == scenario]
+                if all(i["done"] for i in scenario_injections) and any(i.get("succeeded") for i in scenario_injections):
                     if scenario == "b":
                         campaign.scenario_b_injected = True
                     elif scenario == "c":

@@ -19,6 +19,9 @@ class CampaignRecord:
 class FakeCampaignManager:
     def __init__(self):
         self.campaigns = {}
+        # Test hook: when set, inject_scenario_event returns this instead of a
+        # synthesized success — used to exercise the failed-injection path.
+        self.next_inject_result = None
 
     def create_campaign(self, project_id, graph_id, seed_data, **kwargs):
         campaign_id = f'camp_{len(self.campaigns) + 1}'
@@ -111,11 +114,13 @@ class FakeCampaignManager:
 
     def inject_scenario_event(self, campaign_id, scenario, **kwargs):
         payload = self.campaigns[campaign_id]
+        if self.next_inject_result is not None:
+            return self.next_inject_result
         if scenario == 'b':
             payload['scenario_b_injected'] = True
         if scenario == 'c':
             payload['scenario_c_injected'] = True
-        return {'scenario': scenario, 'status': 'injected'}
+        return {'success': True, 'scenario': scenario, 'status': 'injected'}
 
 
 class FakeSentimentAnalyzer:
@@ -225,6 +230,52 @@ def test_campaign_prepare_poll_start_and_sentiment_routes(client):
     compare_response = client.get(f'/api/sentiment/campaign/{campaign_id}/compare')
     assert compare_response.status_code == 200
     assert compare_response.get_json()['comparison']['rounds'] == [1, 2]
+
+
+def test_inject_event_route_reports_success(client):
+    from app.api import sentiment as sentiment_api
+
+    create_response = client.post(
+        '/api/sentiment/campaign/create',
+        json={'project_id': 'proj_1', 'graph_id': 'graph_1', 'seed_data': _valid_seed()},
+    )
+    campaign_id = create_response.get_json()['campaign']['campaign_id']
+
+    inject_response = client.post(
+        f'/api/sentiment/campaign/{campaign_id}/inject',
+        json={'scenario': 'b', 'custom_prompt': 'Breaking news!'},
+    )
+    assert inject_response.status_code == 200
+    payload = inject_response.get_json()
+    assert payload['success'] is True
+    assert payload['result']['success'] is True
+
+
+def test_inject_event_route_propagates_failure(client):
+    """A no-op injection (e.g. the sim env wasn't reachable) must not be
+    reported as an HTTP success — this previously let the UI show "Event
+    injected successfully" for injections that silently did nothing."""
+    from app.api import sentiment as sentiment_api
+
+    create_response = client.post(
+        '/api/sentiment/campaign/create',
+        json={'project_id': 'proj_1', 'graph_id': 'graph_1', 'seed_data': _valid_seed()},
+    )
+    campaign_id = create_response.get_json()['campaign']['campaign_id']
+
+    sentiment_api._campaign_manager.next_inject_result = {
+        'success': False,
+        'error': 'Simulation environment is not running or has closed, cannot perform Interview',
+    }
+
+    inject_response = client.post(
+        f'/api/sentiment/campaign/{campaign_id}/inject',
+        json={'scenario': 'b', 'custom_prompt': 'Breaking news!'},
+    )
+    assert inject_response.status_code == 502
+    payload = inject_response.get_json()
+    assert payload['success'] is False
+    assert 'not running' in payload['error']
 
 
 def test_report_status_route_accepts_get_query(client):

@@ -263,6 +263,12 @@ def inject_event(campaign_id: str):
             custom_prompt=body.get("custom_prompt"),
             timeout=float(body.get("timeout", 60.0)),
         )
+        # `result` carries its own success flag (e.g. the sim environment was
+        # unreachable) without raising — propagate it instead of always
+        # reporting HTTP success, which previously let the UI show "Event
+        # injected successfully" for injections that silently did nothing.
+        if not result.get("success"):
+            return jsonify({"success": False, "result": result, "error": result.get("error")}), 502
         return jsonify({"success": True, "result": result})
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), 404
