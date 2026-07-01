@@ -255,6 +255,7 @@ class SimulationConfigGenerator:
         enable_twitter: bool = True,
         enable_reddit: bool = True,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        poster_agent_pool: Optional[List[AgentActivityConfig]] = None,
     ) -> SimulationParameters:
         """
         Intelligently generates a complete simulation configuration (step-by-step generation)
@@ -269,6 +270,13 @@ class SimulationConfigGenerator:
             enable_twitter: Whether to enable Twitter
             enable_reddit: Whether to enable Reddit
             progress_callback: Progress callback function (current_step, total_steps, message)
+            poster_agent_pool: When the caller bypasses Zep entities for a preset
+                agent pool (e.g. the sentiment campaign's archetype library),
+                pass that pool here. It's used instead of `entities` for the
+                event-config LLM's available poster types and for matching
+                initial posts to a poster agent — otherwise `entities=[]`
+                leaves nothing to match against and every initial post falls
+                back to "highest influence agent" regardless of poster_type.
 
         Returns:
             SimulationParameters: Complete simulation parameters
@@ -305,7 +313,9 @@ class SimulationConfigGenerator:
 
         # ========== Step 2: Generate event configuration ==========
         report_progress(2, "Generating event configuration and trending topics...")
-        event_config_result = self._generate_event_config(context, simulation_requirement, entities)
+        event_config_result = self._generate_event_config(
+            context, simulation_requirement, entities, poster_agent_pool=poster_agent_pool
+        )
         event_config = self._parse_event_config(event_config_result)
         reasoning_parts.append(f"Event config: {event_config_result.get('reasoning', 'Success')}")
 
@@ -333,7 +343,9 @@ class SimulationConfigGenerator:
 
         # ========== Assign poster Agents to initial posts ==========
         logger.info("Assigning appropriate poster Agents to initial posts...")
-        event_config = self._assign_initial_post_agents(event_config, all_agent_configs)
+        event_config = self._assign_initial_post_agents(
+            event_config, poster_agent_pool if poster_agent_pool is not None else all_agent_configs
+        )
         assigned_count = len([p for p in event_config.initial_posts if p.get("poster_agent_id") is not None])
         reasoning_parts.append(f"Initial post assignment: {assigned_count} posts have been assigned a poster")
 
@@ -618,23 +630,35 @@ Field descriptions:
         self,
         context: str,
         simulation_requirement: str,
-        entities: List[EntityNode]
+        entities: List[EntityNode],
+        poster_agent_pool: Optional[List[AgentActivityConfig]] = None,
     ) -> Dict[str, Any]:
         """Generate event configuration"""
 
-        # Get the list of available entity types for the LLM to reference
-        entity_types_available = list(set(
-            e.get_entity_type() or "Unknown" for e in entities
-        ))
+        if poster_agent_pool is not None:
+            # Bypass entities entirely (e.g. archetype-based campaigns pass
+            # entities=[]) so the LLM only ever sees poster types that a real
+            # agent actually exists for.
+            entity_types_available = sorted({a.entity_type for a in poster_agent_pool})
+            type_examples: Dict[str, List[str]] = {}
+            for a in poster_agent_pool:
+                names = type_examples.setdefault(a.entity_type, [])
+                if len(names) < 3 and a.entity_name:
+                    names.append(a.entity_name)
+        else:
+            # Get the list of available entity types for the LLM to reference
+            entity_types_available = list(set(
+                e.get_entity_type() or "Unknown" for e in entities
+            ))
 
-        # List representative entity names for each type
-        type_examples = {}
-        for e in entities:
-            etype = e.get_entity_type() or "Unknown"
-            if etype not in type_examples:
-                type_examples[etype] = []
-            if len(type_examples[etype]) < 3:
-                type_examples[etype].append(e.name)
+            # List representative entity names for each type
+            type_examples = {}
+            for e in entities:
+                etype = e.get_entity_type() or "Unknown"
+                if etype not in type_examples:
+                    type_examples[etype] = []
+                if len(type_examples[etype]) < 3:
+                    type_examples[etype].append(e.name)
 
         type_info = "\n".join([
             f"- {t}: {', '.join(examples)}"
@@ -643,6 +667,17 @@ Field descriptions:
 
         # Use the configured context truncation length
         context_truncated = context[:self.EVENT_CONFIG_CONTEXT_LENGTH]
+
+        if poster_agent_pool is not None:
+            poster_type_hint = (
+                "For example: match each post's tone and stance to the archetype it's attributed to "
+                "(e.g. a skeptical archetype voicing doubts, an early-adopter archetype hyping the product)."
+            )
+        else:
+            poster_type_hint = (
+                "For example: official announcements should be published by Official/University types, "
+                "news by MediaOutlet, student opinions by Student."
+            )
 
         prompt = f"""Based on the following simulation requirements, generate an event configuration.
 
@@ -660,7 +695,7 @@ Please generate an event configuration JSON:
 - Design initial post content; **each post must specify a poster_type (poster's entity type)**
 
 **Important**: poster_type must be chosen from the "Available Entity Types" listed above, so that initial posts can be assigned to the appropriate Agent for publishing.
-For example: official announcements should be published by Official/University types, news by MediaOutlet, student opinions by Student.
+{poster_type_hint}
 
 Return JSON format (no markdown):
 {{

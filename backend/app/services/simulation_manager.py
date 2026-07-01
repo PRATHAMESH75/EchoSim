@@ -16,7 +16,7 @@ from ..config import Config
 from ..utils.logger import get_logger
 from .zep_entity_reader import ZepEntityReader, FilteredEntities
 from .oasis_profile_generator import OasisProfileGenerator, OasisAgentProfile
-from .simulation_config_generator import SimulationConfigGenerator, SimulationParameters
+from .simulation_config_generator import SimulationConfigGenerator, SimulationParameters, AgentActivityConfig
 
 logger = get_logger('mirofish.simulation')
 
@@ -225,6 +225,39 @@ class SimulationManager:
         logger.info(f"Created simulation: {simulation_id}, project={project_id}, graph={graph_id}")
 
         return state
+
+    @staticmethod
+    def _build_archetype_agent_configs(archetype_map: List[Dict[str, Any]]) -> List[AgentActivityConfig]:
+        """Build the agent-config pool for an archetype-based campaign.
+
+        Used both as `poster_agent_pool` (so the config generator's event-config
+        LLM and initial-post assignment match against real archetype types
+        instead of an empty entity list) and as the final `agent_configs`
+        written to simulation_config.json, so the two stay consistent.
+        """
+        from .archetype_library import ARCHETYPE_DEFINITIONS
+
+        configs = []
+        for entry in archetype_map:
+            arch_key = entry.get('archetype', 'casual_browser')
+            defn = ARCHETYPE_DEFINITIONS.get(arch_key, {})
+            al = defn.get('activity_level', 0.5)
+            configs.append(AgentActivityConfig(
+                agent_id=entry['agent_id'],
+                entity_uuid=f"archetype_{arch_key}_{entry['agent_id']}",
+                entity_name=entry.get('username', ''),
+                entity_type=arch_key,
+                activity_level=al,
+                posts_per_hour=round(al * 0.8, 2),
+                comments_per_hour=round(al * 1.5, 2),
+                active_hours=list(range(8, 24)),
+                response_delay_min=5,
+                response_delay_max=60,
+                sentiment_bias=defn.get('sentiment_bias', 0.0),
+                stance="neutral",
+                influence_weight=defn.get('influence_weight', 1.0),
+            ))
+        return configs
 
     def prepare_simulation(
         self,
@@ -451,6 +484,15 @@ class SimulationManager:
                     total=3
                 )
 
+            # When using archetype profiles, build the real agent pool up front
+            # and hand it to the config generator as `poster_agent_pool`. With
+            # entities=[] the generator otherwise has nothing to match a
+            # generated initial-post poster_type against, so every post fell
+            # back to "highest influence agent" regardless of poster_type.
+            poster_agent_pool = None
+            if archetype_profiles is not None and archetype_map is not None:
+                poster_agent_pool = self._build_archetype_agent_configs(archetype_map)
+
             sim_params = config_generator.generate_config(
                 simulation_id=simulation_id,
                 project_id=state.project_id,
@@ -459,7 +501,8 @@ class SimulationManager:
                 document_text=document_text,
                 entities=entities_for_config,
                 enable_twitter=state.enable_twitter,
-                enable_reddit=state.enable_reddit
+                enable_reddit=state.enable_reddit,
+                poster_agent_pool=poster_agent_pool,
             )
 
             if progress_callback:
@@ -477,33 +520,17 @@ class SimulationManager:
 
             # When using archetype profiles, patch agents_per_hour and agent_configs
             # because the config generator received 0 entities and defaults to minimums.
+            # Reuses the same poster_agent_pool passed into generate_config() above,
+            # so the initial-post poster assignments made against that pool stay
+            # consistent with the agent_configs actually written to disk.
             if archetype_profiles is not None and archetype_map is not None:
-                from .archetype_library import ARCHETYPE_DEFINITIONS
+                from dataclasses import asdict
                 n = len(archetype_profiles)
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
                 config_data['time_config']['agents_per_hour_min'] = max(5, n // 10)
                 config_data['time_config']['agents_per_hour_max'] = max(20, n // 3)
-                agent_configs = []
-                for entry in archetype_map:
-                    arch_key = entry.get('archetype', 'casual_browser')
-                    defn = ARCHETYPE_DEFINITIONS.get(arch_key, {})
-                    al = defn.get('activity_level', 0.5)
-                    agent_configs.append({
-                        "agent_id": entry['agent_id'],
-                        "entity_uuid": f"archetype_{arch_key}_{entry['agent_id']}",
-                        "entity_name": entry.get('username', ''),
-                        "entity_type": arch_key,
-                        "activity_level": al,
-                        "posts_per_hour": round(al * 0.8, 2),
-                        "comments_per_hour": round(al * 1.5, 2),
-                        "active_hours": list(range(8, 24)),
-                        "response_delay_min": 5,
-                        "response_delay_max": 60,
-                        "sentiment_bias": defn.get('sentiment_bias', 0.0),
-                        "stance": "neutral",
-                        "influence_weight": defn.get('influence_weight', 1.0),
-                    })
+                agent_configs = [asdict(a) for a in poster_agent_pool]
                 config_data['agent_configs'] = agent_configs
                 with open(config_path, 'w', encoding='utf-8') as f:
                     json.dump(config_data, f, ensure_ascii=False, indent=2)
